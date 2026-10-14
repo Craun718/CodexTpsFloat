@@ -60,45 +60,44 @@ public partial class MainWindow : Window
         StartupBox.IsChecked = StartupEnabled();
         foreach (var item in CadenceBox.Items.OfType<ComboBoxItem>())
             item.IsSelected = item.Tag?.ToString() == settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture);
-        foreach (var radio in FindVisualChildren<RadioButton>(this))
+        foreach (var radio in new[] { MinuteWindow, FiveMinuteWindow, HalfHourWindow, HourWindow })
             if (radio.Tag?.ToString() == settings.WindowSeconds.ToString(CultureInfo.InvariantCulture)) radio.IsChecked = true;
         timer.Interval = TimeSpan.FromSeconds(settings.RefreshSeconds);
         timer.Tick += async (_, _) => await RefreshAsync();
         tray = new Forms.NotifyIcon { Text = "Codex TPS 悬浮窗", Visible = true, Icon = MakeTrayIcon() };
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("显示悬浮窗", null, (_, _) => Dispatcher.Invoke(ShowPanel));
+        menu.Items.Add("打开统计面板", null, (_, _) => Dispatcher.Invoke(ShowPanel));
         menu.Items.Add("立即刷新", null, async (_, _) => await Dispatcher.InvokeAsync(RefreshAsync).Task.Unwrap());
         menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(Close));
         tray.ContextMenuStrip = menu;
-        tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowPanel);
-        Loaded += async (_, _) =>
+        tray.MouseClick += (_, e) =>
         {
-            PositionPanel();
-            initialized = true;
-            timer.Start();
-            await RefreshAsync();
-            if (capturePath != null)
-            {
-                await Dispatcher.InvokeAsync(() => { Capture(capturePath); Close(); }, DispatcherPriority.ApplicationIdle);
-            }
+            if (e.Button == Forms.MouseButtons.Left)
+                Dispatcher.BeginInvoke(() => { if (IsVisible) Hide(); else ShowPanel(); });
         };
+        Loaded += (_, _) => PositionPanel();
         Closing += (_, _) =>
         {
             closing = true; timer.Stop();
-            settings.X = Left; settings.Y = Top;
+            if (double.IsFinite(Left) && double.IsFinite(Top))
+            { settings.X = Left; settings.Y = Top; }
             SaveSettings();
             var icon = tray.Icon; tray.Visible = false; tray.Dispose(); icon?.Dispose();
         };
+        Closed += (_, _) => Application.Current.Shutdown();
     }
     static DateTimeOffset BeijingNow => DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8));
-    static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent) where T : DependencyObject
+    public async Task StartAsync()
     {
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T typed) yield return typed;
-            foreach (var descendant in FindVisualChildren<T>(child)) yield return descendant;
-        }
+        if (initialized) return;
+        initialized = true;
+        timer.Start();
+        await RefreshAsync();
+    }
+    public async Task CaptureAndCloseAsync(string path)
+    {
+        ShowPanel();
+        await Dispatcher.InvokeAsync(() => { Capture(path); Close(); }, DispatcherPriority.ApplicationIdle);
     }
     static System.Drawing.Icon MakeTrayIcon()
     {

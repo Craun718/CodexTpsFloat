@@ -43,12 +43,17 @@ public static class Program
             using var mutex = new Mutex(true, @"Local\CodexTpsFloat.Panel.v1", out bool first);
             using var wake = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\CodexTpsFloat.Show.v1");
             if (!first && capture == null) { wake.Set(); return 0; }
-            var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             var window = new MainWindow(capture, home);
+            app.Startup += async (_, _) =>
+            {
+                await window.StartAsync();
+                if (capture != null) await window.CaptureAndCloseAsync(capture);
+            };
             RegisteredWaitHandle? registration = null;
             if (capture == null) registration = ThreadPool.RegisterWaitForSingleObject(wake,
                 (_, _) => app.Dispatcher.BeginInvoke(window.ShowPanel), null, Timeout.Infinite, false);
-            try { return app.Run(window); }
+            try { return app.Run(); }
             finally { registration?.Unregister(null); if (first) mutex.ReleaseMutex(); }
         }
         catch (Exception e)

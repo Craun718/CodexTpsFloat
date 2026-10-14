@@ -1,6 +1,6 @@
 # Codex TPS 中文悬浮窗
 
-Windows 10/11 x64 的本机日志监视工具。白色圆角面板参考 [codex-tps-panel.png](https://github.com/gaofeng21cn/codex-tps/blob/main/docs/assets/codex-tps-panel.png)，代码为独立实现。
+Windows 10/11 x64 的本机日志监视工具，默认运行在系统托盘，不显示任务栏窗口按钮。白色圆角面板参考 [codex-tps-panel.png](https://github.com/gaofeng21cn/codex-tps/blob/main/docs/assets/codex-tps-panel.png)，代码为独立实现。
 
 ## 使用
 
@@ -9,12 +9,13 @@ Windows 10/11 x64 的本机日志监视工具。白色圆角面板参考 [codex-
 GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码后，使用 .NET 10 SDK 运行 `./build.ps1 -Portable` 生成 `app/CodexTpsFloat.exe`。本机交付目录已包含构建好的程序。隐私与提交范围见 [PRIVACY.md](PRIVACY.md)。
 
 - 默认读取 `CODEX_HOME`；未设置时读取当前用户的 `.codex`。同时统计 `sessions` 与 `archived_sessions`。
-- 拖动标题区域移动窗口，蓝色菱形切换置顶，减号收起到系统托盘；双击托盘图标恢复。电源按钮退出。
+- 启动后只显示系统托盘图标；悬停显示当前生成速度估算。单击图标打开或收起统计面板，右键可打开面板、立即刷新或退出。面板展开时也不出现任务栏窗口按钮。
+- 面板可拖动，蓝色菱形切换置顶，减号收起到托盘。电源按钮退出整个工具。
 - 切换 1 分钟、5 分钟、30 分钟、1 小时窗口，或筛选模型。自动刷新支持 5、15、30、60 秒。
 - 展开「今日分时」，可以选择其他日期并导出中文 Markdown 或 JSON 报告。时区固定为北京时间 UTC+8。
 - 「设置」可以选择数据目录。选择包含 `sessions` 的 `.codex` 目录，而不是 `sessions` 自身。
 - 「登录启动」默认关闭，仅在手动勾选后设置当前用户的启动项。取消勾选即可移除。
-- 第二次启动会显示已有悬浮窗，不重复运行监视进程。窗口位置、刷新周期、置顶和时间窗口保存在程序旁的 `data/settings.json`。
+- 第二次启动会打开已有统计面板，不重复运行监视进程。关闭面板前尚未打开过它，也可以从托盘菜单正常退出。窗口位置、刷新周期、置顶和时间窗口保存在程序旁的 `data/settings.json`。
 
 ## 数字的含义
 
@@ -49,6 +50,8 @@ GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码�
 
 ```powershell
 dotnet run --project .\tests\CoreTests.csproj -c Release
+dotnet run --project .\tests\TrayLifecycleTests.csproj -c Release
+dotnet run --project .\tests\TrayLifecycleTests.csproj -c Release -- --never-show
 .\build.ps1 -Portable
 ```
 
