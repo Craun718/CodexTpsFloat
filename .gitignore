@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+/app/
+/data/
+/reports/
+/preview.png
+/VALIDATION.md
+*.pdb
+*.zip
+*.jsonl
+*.sqlite*
+*.log
+.env
+auth.json
