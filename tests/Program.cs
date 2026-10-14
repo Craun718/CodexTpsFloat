@@ -74,6 +74,28 @@ try
     File.WriteAllText(file, "bad-json\n" + row + "\n", Encoding.UTF8);
     var partial = inc.Refresh(now);
     Check(partial.InvalidLines == 1 && partial.Records.Count == 1, "坏记录不阻断有效记录");
+
+    string streamRoot = Path.Combine(directory, "streaming");
+    Directory.CreateDirectory(Path.Combine(streamRoot, "sessions"));
+    string streamFile = Path.Combine(streamRoot, "sessions", "unicode.jsonl");
+    string longLine = "{\"type\":\"response_item\",\"payload\":{\"text\":\"" + new string('中', 70000) + "\"}}\r\n";
+    string unicodeRow = row.Replace("\"thread_id\":\"p\"", "\"thread_id\":\"中文线程\"");
+    byte[] unicodeBytes = Encoding.UTF8.GetBytes(unicodeRow + "\r\n");
+    int middleOfCharacter = Encoding.UTF8.GetByteCount(unicodeRow[..unicodeRow.IndexOf("中文线程", StringComparison.Ordinal)]) + 1;
+    File.WriteAllText(streamFile, longLine + " \t \r\n", new UTF8Encoding(true));
+    using (var output = new FileStream(streamFile, FileMode.Append)) output.Write(unicodeBytes, 0, middleOfCharacter);
+    var streamed = new UsageScanner(streamRoot);
+    var unfinished = streamed.Refresh(now);
+    Check(unfinished.Records.Count == 0 && unfinished.InvalidLines == 0, "跨缓冲区长行、空白 CRLF 和未完成 UTF8 尾行");
+    using (var output = new FileStream(streamFile, FileMode.Append))
+        output.Write(unicodeBytes, middleOfCharacter, unicodeBytes.Length - middleOfCharacter);
+    var completed = streamed.Refresh(now);
+    Check(completed.Records.Count == 1 && completed.InvalidLines == 0
+        && completed.Records[0].Usage.Thread == "中文线程", "从中文字符中间补全尾行且按字节推进");
+    string secondRow = unicodeRow.Replace("\"response_id\":\"partial\"", "\"response_id\":\"second\"");
+    File.AppendAllText(streamFile, secondRow + "\n", new UTF8Encoding(false));
+    Check(streamed.Refresh(now).Records.Count == 2 && streamed.Refresh(now).InvalidLines == 0,
+        "长行后继续增量读取，CRLF 和 LF 不重复或遗漏记录");
 }
 finally { Directory.Delete(directory, true); }
-Console.WriteLine("通过：去重、输入与推理口径、窗口吞吐、空窗口、时区、零持续时间、并发、模型筛选、重试区间隔离、BOM、尾行补全、增量刷新、归档、截断与坏记录。");
+Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、坏记录、BOM、跨缓冲区长行、CRLF 与中文字符中间补全尾行。");

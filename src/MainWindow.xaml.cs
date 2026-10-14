@@ -118,7 +118,7 @@ public partial class MainWindow : Window
         Left = Math.Clamp(settings.X ?? area.Right - ActualWidth - 24, area.Left, Math.Max(area.Left, area.Right - ActualWidth));
         Top = Math.Clamp(settings.Y ?? area.Bottom - ActualHeight - 24, area.Top, Math.Max(area.Top, area.Bottom - ActualHeight));
     }
-    public void ShowPanel() { Show(); WindowState = WindowState.Normal; Activate(); }
+    public void ShowPanel() { Show(); WindowState = WindowState.Normal; RenderHistory(); Activate(); }
     async Task RefreshAsync()
     {
         if (refreshing || closing) return;
@@ -178,7 +178,7 @@ public partial class MainWindow : Window
     }
     void RenderHistory()
     {
-        if (snapshot == null) return;
+        if (snapshot == null || !IsVisible || HistoryPanel.Visibility != Visibility.Visible) return;
         HourGrid.ItemsSource = UsageScanner.Hours(snapshot, DateBox.SelectedDate ?? BeijingNow.Date, ModelFilter);
     }
     void SaveSettings()

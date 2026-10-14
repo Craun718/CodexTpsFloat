@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -63,9 +64,9 @@ public sealed class UsageScanner
     public void Ingest(string line, string sourceThread = "")
     {
         var cursor = new Cursor { Thread = sourceThread };
-        Parse(line, cursor);
+        Parse(Encoding.UTF8.GetBytes(line), cursor);
     }
-    void Parse(string line, Cursor cursor)
+    void Parse(ReadOnlyMemory<byte> line, Cursor cursor)
     {
         using var doc = JsonDocument.Parse(line);
         var root = doc.RootElement;
@@ -123,6 +124,45 @@ public sealed class UsageScanner
         usage[responseId] = new(responseId, Str(p, "thread_id", cursor.Thread), turnId, timestamp,
             input, cached, outputCount, reasoning);
     }
+    void ReadCompleteLines(FileStream stream, Cursor cursor)
+    {
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        int buffered = 0;
+        try
+        {
+            int read;
+            while ((read = stream.Read(buffer, buffered, buffer.Length - buffered)) > 0)
+            {
+                buffered += read;
+                int consumed = 0;
+                while (consumed < buffered)
+                {
+                    int newline = buffer.AsSpan(consumed, buffered - consumed).IndexOf((byte)'\n');
+                    if (newline < 0) break;
+                    var line = buffer.AsMemory(consumed, newline);
+                    if (!line.Span.Trim(" \t\r\v\f"u8).IsEmpty)
+                    {
+                        try { Parse(line, cursor); }
+                        catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException)
+                        { invalidLines++; }
+                    }
+                    consumed += newline + 1;
+                    cursor.Offset += newline + 1; // Byte offsets also cover CRLF and multibyte UTF-8.
+                }
+                buffered -= consumed;
+                if (buffered > 0 && consumed > 0) Buffer.BlockCopy(buffer, consumed, buffer, 0, buffered);
+                if (buffered == buffer.Length)
+                {
+                    byte[] larger = ArrayPool<byte>.Shared.Rent(checked(buffer.Length * 2));
+                    Buffer.BlockCopy(buffer, 0, larger, 0, buffered);
+                    ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+                    buffer = larger;
+                }
+            }
+            // Leave an unfinished tail at its original offset for the next refresh.
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer, clearArray: true); }
+    }
     public UsageSnapshot Refresh(DateTimeOffset now)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -157,19 +197,7 @@ public sealed class UsageScanner
                         cursor.Offset = 3;
                 }
                 stream.Seek(cursor.Offset, SeekOrigin.Begin);
-                using var reader = new StreamReader(stream, Encoding.UTF8, true);
-                string tail = reader.ReadToEnd();
-                int lastNewline = tail.LastIndexOf('\n');
-                if (lastNewline < 0) continue; // Retry an unfinished JSONL tail next refresh.
-                string complete = tail[..(lastNewline + 1)];
-                foreach (string line in complete.Split('\n'))
-                {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-                    try { Parse(line, cursor); }
-                    catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException)
-                    { invalidLines++; }
-                }
-                cursor.Offset += Encoding.UTF8.GetByteCount(complete);
+                ReadCompleteLines(stream, cursor);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { failures++; }
         }
@@ -192,20 +220,27 @@ public sealed class UsageScanner
             double previous = turn?.Start ?? double.NegativeInfinity;
             foreach (var r in group.OrderBy(r => r.Completed))
             {
-                var items = turn?.Items.Values.Where(i => i.Start >= previous && i.End <= r.Completed + .001).ToArray()
-                    ?? Array.Empty<ModelItem>();
+                double itemCutoff = previous;
                 if (RequestStarts.TryGetValue(r.Thread + "/" + r.Turn, out var boundaries))
                 {
-                    double[] matching = boundaries.Where(t => t >= previous - .25 && t < r.Completed).ToArray();
-                    if (matching.Length > 0) items = items.Where(i => i.Start >= matching[^1] - .05).ToArray();
+                    foreach (double boundary in boundaries)
+                        if (boundary >= previous - .25 && boundary < r.Completed)
+                            itemCutoff = Math.Max(previous, boundary - .05);
                 }
                 double? start = null, seconds = null;
-                if (items.Length > 0 && items.Any(i => i.End > i.Start) && r.Output > 0)
+                double first = double.PositiveInfinity;
+                bool hasDuration = false;
+                if (turn != null && r.Output > 0)
                 {
-                    double first = items.Min(i => i.Start);
-                    double elapsed = r.Completed - first;
-                    if (elapsed > 0) { start = first; seconds = elapsed; }
+                    foreach (var item in turn.Items.Values)
+                    {
+                        if (item.Start < itemCutoff || item.End > r.Completed + .001) continue;
+                        first = Math.Min(first, item.Start);
+                        hasDuration |= item.End > item.Start;
+                    }
                 }
+                double elapsed = r.Completed - first;
+                if (hasDuration && elapsed > 0) { start = first; seconds = elapsed; }
                 result.Add(new(r, turn?.Model ?? "未知模型", start, seconds));
                 previous = r.Completed;
             }
