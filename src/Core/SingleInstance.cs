@@ -225,7 +225,12 @@ public sealed class SingleInstance : IDisposable
     {
         if (disposed) return;
         disposed = true;
-        windowsRegistration?.Unregister(null);
+        if (windowsRegistration != null)
+        {
+            // Finish any in-flight acknowledgment before closing its event.
+            using var drained = new ManualResetEvent(false);
+            if (windowsRegistration.Unregister(drained)) drained.WaitOne();
+        }
         windowsWake?.Dispose();
         windowsAcknowledged?.Dispose();
         unixCancellation?.Cancel();
