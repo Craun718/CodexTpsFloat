@@ -59,7 +59,7 @@ public sealed class SingleInstance : IDisposable
         var mutex = new Mutex(true, scopedName, out bool first);
         try
         {
-            var wake = new EventWaitHandle(false, EventResetMode.AutoReset, scopedName + ".Show");
+            var wake = new EventWaitHandle(false, EventResetMode.AutoReset, $"Local\\{name}.Show.v1");
             RegisteredWaitHandle? registration = null;
             if (first && showExisting != null)
                 registration = ThreadPool.RegisterWaitForSingleObject(wake,
