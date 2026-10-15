@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>CodexTpsFloat</AssemblyName>
+    <RootNamespace>CodexTpsFloat.App</RootNamespace>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <EnableWindowsTargeting Condition="'$(OS)' != 'Windows_NT'">true</EnableWindowsTargeting>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <Version>1.2.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12" Condition="'$(Configuration)' == 'Debug'"/>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Core/CodexTpsFloat.Core.csproj"/>
+  </ItemGroup>
+</Project>
