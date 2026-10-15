@@ -19,6 +19,8 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12"/>
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12"/>
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12" Condition="'$(Configuration)' == 'Debug'"/>
+    <!-- Pin the patched version of Avalonia.FreeDesktop's transitive dependency. -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3"/>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Core/CodexTpsFloat.Core.csproj"/>
