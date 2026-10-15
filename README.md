@@ -1,14 +1,23 @@
 # Codex TPS 中文悬浮窗
 
-Windows 10/11 x64 的本机日志监视工具，默认运行在系统托盘，不显示任务栏窗口按钮。白色圆角面板参考 [codex-tps-panel.png](https://github.com/gaofeng21cn/codex-tps/blob/main/docs/assets/codex-tps-panel.png)，代码为独立实现。
+Windows、macOS 和 Linux 的本机日志监视工具，默认运行在系统托盘，不显示任务栏窗口按钮。白色圆角面板参考 [codex-tps-panel.png](https://github.com/gaofeng21cn/codex-tps/blob/main/docs/assets/codex-tps-panel.png)，代码为独立实现。
 
 ## 使用
 
-从 [GitHub Releases](https://github.com/jinghero/CodexTpsFloat/releases/latest) 下载 `CodexTpsFloat-v版本号-win-x64-portable.zip`，解压后双击 `CodexTpsFloat.exe`。便携版包含运行时，不需要安装 Python 或 .NET，不需要管理员权限。请下载便携 ZIP；GitHub 自动附带的 `Source code` 压缩包只包含源码。
+从 [GitHub Releases](https://github.com/jinghero/CodexTpsFloat/releases/latest) 选择适合当前系统的附件：
 
-GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码后，使用 .NET 10 SDK 运行 `./build.ps1 -Portable` 生成 `app/CodexTpsFloat.exe`。Release 附件同时提供便携 ZIP 的 `.sha256` 校验文件。隐私与提交范围见 [PRIVACY.md](PRIVACY.md)。
+| 系统 | 附件 | 启动文件 |
+|---|---|---|
+| Windows x64 | `CodexTpsFloat-v版本号-win-x64-portable.zip` | `CodexTpsFloat.exe` |
+| macOS Apple 芯片 | `CodexTpsFloat-v版本号-osx-arm64-portable.tar.gz` | `CodexTpsFloat` |
+| macOS Intel | `CodexTpsFloat-v版本号-osx-x64-portable.tar.gz` | `CodexTpsFloat` |
+| Linux x64 | `CodexTpsFloat-v版本号-linux-x64-portable.tar.gz` | `CodexTpsFloat` |
 
-便携构建使用单文件 EXE，关闭 EXE 内部的程序集压缩，以减少运行时解压所需的内存；下载时由外层 ZIP 压缩。解压后的 EXE 文件较大，其中包含 .NET 和 Windows Desktop 运行时。
+压缩包包含运行时，不需要安装 Python 或 .NET，不需要管理员权限。请下载对应的便携包；GitHub 自动附带的 `Source code` 压缩包只包含源码。Release 附件同时提供压缩包的 `.sha256` 校验文件。隐私与提交范围见 [PRIVACY.md](PRIVACY.md)。
+
+macOS 首次运行时如果被 Gatekeeper 阻止，请在 Finder 中右键 `CodexTpsFloat` 选择「打开」，或前往「系统设置」>「隐私与安全性」允许运行。便携包没有代码签名。
+
+便携构建使用单文件程序，并关闭内部程序集压缩，以减少运行时解压所需的内存；下载时由外层压缩包压缩。解压后的程序较大，其中包含 .NET 运行时及各平台的界面依赖。
 
 - 默认读取 `CODEX_HOME`；未设置时读取当前用户的 `.codex`。同时统计 `sessions` 与 `archived_sessions`。
 - 启动后只显示系统托盘图标；悬停显示当前生成速度估算。单击图标打开或收起统计面板，右键可打开面板、立即刷新或退出。面板展开时也不出现任务栏窗口按钮。
@@ -17,7 +26,7 @@ GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码�
 - 展开「今日分时」，可以选择其他日期并导出中文 Markdown 或 JSON 报告。时区固定为北京时间 UTC+8。
 - 「设置」可以选择数据目录。选择包含 `sessions` 的 `.codex` 目录，而不是 `sessions` 自身。
 - 「登录启动」默认关闭，仅在手动勾选后设置当前用户的启动项。取消勾选即可移除。
-- 第二次启动会打开已有统计面板，不重复运行监视进程。关闭面板前尚未打开过它，也可以从托盘菜单正常退出。窗口位置、刷新周期、置顶和时间窗口保存在程序旁的 `data/settings.json`。
+- 第二次启动会打开已有统计面板，不重复运行监视进程。关闭面板前尚未打开过它，也可以从托盘菜单正常退出。Windows 的设置保存在程序旁的 `data/settings.json`；macOS 和 Linux 保存在用户配置目录，避免系统级安装目录不可写。
 
 ## 数字的含义
 
@@ -37,7 +46,7 @@ GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码�
 
 如果当前数据目录存在 `logs_*.sqlite`，以只读方式增量读取请求鉴权边界，用于排除失败尝试遗留的输出项。诊断库缺失、被锁定或格式不兼容时仍可使用 JSONL 输出项计时，状态提示中说明降级。边界日志可能已过期，因此仍是估算值。
 
-输出不保存提示词或回答正文。配置写入程序旁目录，导出报告的位置由保存对话框选择。若程序目录只读，统计仍可运行，但设置无法保存。
+输出不保存提示词或回答正文。导出报告的位置由保存对话框选择。Windows 配置写入程序旁目录；macOS 和 Linux 写入用户配置目录。
 
 可用于脚本的单次快照：
 
@@ -46,22 +55,36 @@ GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码�
 .\app\CodexTpsFloat.exe --codex-home 'D:\CodexData' --snapshot-json .\snapshot.json
 ```
 
+macOS 或 Linux 使用相同参数：
+
+```bash
+./app/CodexTpsFloat --snapshot-json ./snapshot.json
+./app/CodexTpsFloat --codex-home /path/to/.codex --snapshot-json ./snapshot.json
+```
+
 退出码：`0` 成功；`1` 读取或写入失败；`2` 参数错误；`3` 未找到会话日志。快照模式独立执行，JSON 包含四个滚动窗口和今日分时汇总，不包含正文。
 
-从源码构建需要 .NET 10 SDK：
+GitHub 源码仓库不包含可执行文件和本机运行数据。从源码构建需要 .NET 10 SDK。Windows 使用 PowerShell：
 
 ```powershell
 dotnet run --project .\tests\CoreTests.csproj -c Release
-dotnet run --project .\tests\TrayLifecycleTests.csproj -c Release
 dotnet run --project .\tests\TrayLifecycleTests.csproj -c Release -- --never-show
-.\build.ps1 -Portable
+.\build.ps1 -Runtime win-x64 -Portable
 ```
 
-源码中的 `--capture 文件.png` 用于界面验收，生成真实 WPF 控件渲染图后退出。便携 EXE 未进行 Authenticode 签名。
+macOS 和 Linux 使用 Bash，架构会从当前系统推断，也可以显式传入 RID：
+
+```bash
+dotnet run --project tests/CoreTests.csproj -c Release
+./build.sh osx-arm64
+PORTABLE=1 ./build.sh linux-x64
+```
+
+源码中的 `--capture 文件.png` 用于界面验收，生成真实 Avalonia 控件渲染图后退出。Windows 便携 EXE 未进行 Authenticode 签名，macOS 便携程序未进行代码签名或公证。
 
 ## 发布新版本
 
-先修改 `src/CodexTpsFloat.csproj` 中的 `Version` 并提交、推送，再创建对应的 `v版本号` 标签。以下示例用于下一个补丁版本；标签说明会成为 Release 说明：
+先修改 `Directory.Build.props` 中的 `Version` 并提交、推送，再创建对应的 `v版本号` 标签。以下示例用于下一个补丁版本；标签说明会成为 Release 说明：
 
 ```powershell
 git push origin main
@@ -69,4 +92,4 @@ git tag -a v1.1.4 -m "Release v1.1.4"
 git push origin v1.1.4
 ```
 
-推送标签后，GitHub Actions 会校验标签与项目版本一致，运行核心和隐藏托盘生命周期测试，调用 `build.ps1 -Portable` 构建 Windows x64 便携版，打包并验证解压后的程序，最后创建公开 Release 并上传 ZIP 和 SHA-256 校验文件。打包只包含程序、README、隐私说明和第三方许可证，不包含本机设置、日志或调试符号。
+推送标签后，GitHub Actions 会校验标签与项目版本一致，运行核心测试；Windows 额外运行隐藏托盘生命周期测试。发布矩阵构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 便携包，解压后执行快照 smoke test，并生成 SHA-256 校验文件。全部平台成功后，工作流创建公开 Release 并上传所有压缩包与校验文件。打包只包含程序、README、隐私说明和第三方许可证，不包含本机设置、日志或调试符号。
