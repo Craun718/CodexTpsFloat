@@ -422,20 +422,23 @@ public partial class MainWindow : Window
     {
         if (snapshot == null) return;
         var date = (DateBox.SelectedDate ?? BeijingNow).Date;
-        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        var markdownFileType = new FilePickerFileType("中文报告") { Patterns = new[] { "*.md" } };
+        var jsonFileType = new FilePickerFileType("数据文件") { Patterns = new[] { "*.json" } };
+        var result = await StorageProvider.SaveFilePickerWithResultAsync(new FilePickerSaveOptions
         {
             Title = "导出报告",
             SuggestedFileName = $"Codex-TPS-{date:yyyy-MM-dd}.md",
             DefaultExtension = "md",
             ShowOverwritePrompt = true,
-            FileTypeChoices = new[]
-            {
-                new FilePickerFileType("中文报告") { Patterns = new[] { "*.md" } },
-                new FilePickerFileType("数据文件") { Patterns = new[] { "*.json" } }
-            }
+            SuggestedFileType = markdownFileType,
+            FileTypeChoices = new[] { markdownFileType, jsonFileType }
         });
-        string? path = file?.TryGetLocalPath();
+        string? path = result.File?.TryGetLocalPath();
         if (path == null) return;
+        string? selectedPattern = result.SelectedFileType?.Patterns?.FirstOrDefault();
+        bool json = string.Equals(selectedPattern, "*.json", StringComparison.OrdinalIgnoreCase)
+            || (selectedPattern == null && Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase));
+        path = Path.ChangeExtension(path, json ? ".json" : ".md");
         try
         {
             var hours = UsageScanner.Hours(snapshot, date, ModelFilter);
