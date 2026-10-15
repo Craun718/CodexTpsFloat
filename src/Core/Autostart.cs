@@ -19,13 +19,12 @@ public interface IAutostartService
 
 public static class Autostart
 {
-    public static IAutostartService Create(string? executablePath = null, string? configDirectory = null)
+    public static IAutostartService Create(string? executablePath = null, string? autostartDirectory = null)
     {
         string exe = executablePath ?? Environment.ProcessPath ?? "";
-        string config = configDirectory ?? PlatformPaths.UserConfigDirectory();
         if (OperatingSystem.IsWindows()) return new WindowsAutostart(exe);
         if (OperatingSystem.IsMacOS()) return new MacAutostart(exe);
-        return new LinuxAutostart(exe, config);
+        return new LinuxAutostart(exe, autostartDirectory ?? PlatformPaths.UserAutostartDirectory());
     }
 }
 
@@ -95,8 +94,8 @@ public sealed class LinuxAutostart : IAutostartService
 {
     readonly string executable;
     readonly string desktopPath;
-    public LinuxAutostart(string executable, string configDirectory) =>
-        (this.executable, desktopPath) = (executable, Path.Combine(configDirectory, "autostart", "CodexTpsFloat.desktop"));
+    public LinuxAutostart(string executable, string autostartDirectory) =>
+        (this.executable, desktopPath) = (executable, Path.Combine(autostartDirectory, "CodexTpsFloat.desktop"));
     public bool IsEnabled() => File.Exists(desktopPath);
     public string? SetEnabled(bool enabled)
     {

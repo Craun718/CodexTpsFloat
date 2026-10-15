@@ -12,11 +12,12 @@ public static class PlatformPaths
     /// </summary>
     public static string UserConfigDirectory(string appName = "CodexTpsFloat")
     {
-        string root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        if (string.IsNullOrEmpty(root))
-            root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
-        return Path.Combine(root, appName);
+        return Path.Combine(UserConfigRoot(), appName);
     }
+
+    /// <summary>Returns the XDG autostart directory used by desktop environments.</summary>
+    public static string UserAutostartDirectory() =>
+        Path.Combine(UserConfigRoot(), "autostart");
 
     public static string UserCacheDirectory(string appName = "CodexTpsFloat")
     {
@@ -39,5 +40,20 @@ public static class PlatformPaths
         if (string.IsNullOrEmpty(root))
             root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache");
         return Path.Combine(root, appName);
+    }
+
+    static string UserConfigRoot()
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            string? configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+            if (Path.IsPathRooted(configHome)) return configHome!;
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
+        }
+
+        string root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrEmpty(root))
+            root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
+        return root;
     }
 }

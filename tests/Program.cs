@@ -192,10 +192,10 @@ try
 
     string entry = OperatingSystem.IsMacOS()
         ? Path.Combine(directory, "LaunchAgents", "com.codextpsfloat.plist")
-        : Path.Combine(directory, "config", "autostart", "CodexTpsFloat.desktop");
+        : Path.Combine(directory, "autostart", "CodexTpsFloat.desktop");
     IAutostartService login = OperatingSystem.IsMacOS()
         ? new MacAutostart("/Applications/Codex TPS.app", Path.GetDirectoryName(entry))
-        : new LinuxAutostart("/opt/codex tps/CodexTpsFloat", Path.Combine(directory, "config"));
+        : new LinuxAutostart("/opt/codex tps/CodexTpsFloat", Path.GetDirectoryName(entry)!);
     Check(!login.IsEnabled(), "未启用时登录启动为关闭状态");
     Check(login.SetEnabled(true) == null && login.IsEnabled(), "启用登录启动会创建条目");
     string entryText = File.ReadAllText(entry);
