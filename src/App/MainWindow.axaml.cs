@@ -31,7 +31,7 @@ public partial class MainWindow : Window
     UsageScanner scanner;
     RequestClockReader requestClocks;
     UsageSnapshot? snapshot;
-    bool refreshing, initialized, closing, positioned;
+    bool refreshing, initialized, closing, positioned, refreshPending;
     readonly List<string> models = new() { "全部模型" };
 
     public MainWindow() : this(null, null) { }
@@ -172,7 +172,8 @@ public partial class MainWindow : Window
 
     async Task RefreshAsync()
     {
-        if (refreshing || closing) return;
+        if (closing) return;
+        if (refreshing) { refreshPending = true; return; }
         refreshing = true;
         RefreshButton.IsEnabled = false;
         StatusText.Text = "读取中";
@@ -185,7 +186,7 @@ public partial class MainWindow : Window
                 activeScanner.RequestStarts = activeClocks.Refresh();
                 return activeScanner.Refresh(BeijingNow);
             });
-            if (closing) return;
+            if (closing || !ReferenceEquals(activeScanner, scanner)) return;
             bool followToday = snapshot == null || DateBox.SelectedDate == snapshot.GeneratedAt.Date;
             snapshot = next;
             if (followToday) DateBox.SelectedDate = next.GeneratedAt.Date;
@@ -222,6 +223,11 @@ public partial class MainWindow : Window
         {
             refreshing = false;
             RefreshButton.IsEnabled = true;
+            if (refreshPending && !closing)
+            {
+                refreshPending = false;
+                await RefreshAsync();
+            }
         }
     }
 
