@@ -206,6 +206,12 @@ try
     Check(reportJson.RootElement.GetProperty("timezone").GetString() == "UTC+8"
         && reportJson.RootElement.GetProperty("model").GetString() == "全部模型"
         && reportJson.RootElement.GetProperty("hours").GetArrayLength() == 2, "JSON 报告字段与导出参数一致");
+    string unsafeModel = "![remote](https://example.com/pixel.png)\n<link>[injected]";
+    ReportExporter.Write(markdownPath, snap, now.Date, unsafeModel, exportHours);
+    string escapedMarkdown = File.ReadAllText(markdownPath);
+    Check(escapedMarkdown.Contains("模型：`![remote](https://example.com/pixel.png) <link>[injected]`。")
+        && !escapedMarkdown.Contains("\n<link>"),
+        "Markdown 报告转义来自日志的模型名");
 
     string entry = OperatingSystem.IsMacOS()
         ? Path.Combine(directory, "LaunchAgents", "com.codextpsfloat.plist")
@@ -237,8 +243,10 @@ try
         decodedPath.Append(decodedExec[i]);
     }
     Check(decodedPath.ToString() == "/opt/a\"b\\c%d$e`f\napp", "Exec 两层转义后保留原始路径且不插入新条目");
-    Check(new LinuxAutostart("/opt/a=b/app", linuxEntryDirectory).SetEnabled(true) != null,
-        "拒绝 Desktop Entry 规范禁止的可执行路径");
+    Check(new LinuxAutostart("/opt/a=b/app", linuxEntryDirectory).SetEnabled(true) == null,
+        "允许 Linux 可执行路径包含等号");
+    Check(File.ReadAllLines(Path.Combine(linuxEntryDirectory, "CodexTpsFloat.desktop"))
+        .Contains("Exec=\"/opt/a=b/app\""), "Desktop Entry 保留可执行路径中的等号");
 
     string instanceName = "codex-tps-test-" + Guid.NewGuid().ToString("N") + new string('x', 80);
     string instanceDirectory = Path.Combine(directory, "instance");
