@@ -8,6 +8,8 @@ Windows 10/11 x64 的本机日志监视工具，默认运行在系统托盘，�
 
 GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码后，使用 .NET 10 SDK 运行 `./build.ps1 -Portable` 生成 `app/CodexTpsFloat.exe`。Release 附件同时提供便携 ZIP 的 `.sha256` 校验文件。隐私与提交范围见 [PRIVACY.md](PRIVACY.md)。
 
+便携构建使用单文件 EXE，关闭 EXE 内部的程序集压缩，以减少运行时解压所需的内存；下载时由外层 ZIP 压缩。解压后的 EXE 文件较大，其中包含 .NET 和 Windows Desktop 运行时。
+
 - 默认读取 `CODEX_HOME`；未设置时读取当前用户的 `.codex`。同时统计 `sessions` 与 `archived_sessions`。
 - 启动后只显示系统托盘图标；悬停显示当前生成速度估算。单击图标打开或收起统计面板，右键可打开面板、立即刷新或退出。面板展开时也不出现任务栏窗口按钮。
 - 面板可拖动，蓝色菱形切换置顶，减号收起到托盘。电源按钮退出整个工具。
@@ -63,8 +65,8 @@ dotnet run --project .\tests\TrayLifecycleTests.csproj -c Release -- --never-sho
 
 ```powershell
 git push origin main
-git tag -a v1.1.3 -m "Release v1.1.3"
-git push origin v1.1.3
+git tag -a v1.1.4 -m "Release v1.1.4"
+git push origin v1.1.4
 ```
 
 推送标签后，GitHub Actions 会校验标签与项目版本一致，运行核心和隐藏托盘生命周期测试，调用 `build.ps1 -Portable` 构建 Windows x64 便携版，打包并验证解压后的程序，最后创建公开 Release 并上传 ZIP 和 SHA-256 校验文件。打包只包含程序、README、隐私说明和第三方许可证，不包含本机设置、日志或调试符号。
