@@ -95,8 +95,8 @@ public sealed class LinuxAutostart : IAutostartService
     // Exec quoting is decoded after desktop-entry string escapes.
     static string EncodeExecutable(string path)
     {
-        if (path.Contains('=') || path.Contains('\0'))
-            throw new ArgumentException("登录启动路径不能包含等号或空字符。");
+        if (path.Contains('\0'))
+            throw new ArgumentException("登录启动路径不能包含空字符。");
         var quoted = new StringBuilder();
         foreach (char c in path)
         {
