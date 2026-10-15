@@ -93,7 +93,7 @@ public sealed class SingleInstance : IDisposable
                     FileShare.None);
                 owns = true;
             }
-            catch (IOException)
+            catch (IOException error) when ((error.HResult & 0xffff) is 11 or 32 or 33 or 35)
             {
             }
 
