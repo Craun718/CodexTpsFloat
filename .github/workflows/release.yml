@@ -42,10 +42,10 @@ jobs:
           - runner: windows-latest
             runtime: win-x64
             shell: pwsh
-          - runner: macos-14
+          - runner: macos-15
             runtime: osx-arm64
             shell: bash
-          - runner: macos-14
+          - runner: macos-15-intel
             runtime: osx-x64
             shell: bash
           - runner: ubuntu-latest
