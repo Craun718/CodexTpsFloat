@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
- <ItemGroup><Compile Include="Program.cs"/><Compile Include="../src/UsageScanner.cs" Link="UsageScanner.cs"/></ItemGroup>
+ <ItemGroup><Compile Include="Program.cs"/><ProjectReference Include="../src/Core/CodexTpsFloat.Core.csproj"/></ItemGroup>
 </Project>
