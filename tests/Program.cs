@@ -148,6 +148,31 @@ try
     var modern = legacy.Refresh(now);
     Check(modern.UnsupportedFiles == 1 && modern.Records.Count == 1 && modern.InvalidLines == 0,
         "同文件出现逐次 token_usage_record 后恢复可计量状态");
+
+    string settingsDirectory = Path.Combine(directory, "settings");
+    var store = new SettingsStore(Path.Combine(settingsDirectory, "settings.json"));
+    Check(store.Load().WindowSeconds == 300, "缺失设置文件时回退到默认值");
+    var custom = new PanelSettings { CodexHome = directory, WindowSeconds = 999, RefreshSeconds = 42,
+        Pinned = false, X = 12.5, Y = 34.5 };
+    store.Save(custom);
+    var loaded = store.Load();
+    Check(loaded.WindowSeconds == 300 && loaded.RefreshSeconds == 15, "越界选项在读取时归一化");
+    Check(loaded.Pinned == false && loaded.X == 12.5 && loaded.Y == 34.5 && loaded.CodexHome == directory,
+        "有效设置项完整往返");
+    Check(!File.Exists(store.Path + ".tmp"), "原子保存不残留临时文件");
+
+    var exportHours = new[] { new HourStats("09:00–10:00", 2, 21.5, 22.25), new HourStats("10:00–11:00", 0, null, null) };
+    string markdownPath = Path.Combine(directory, "report.md");
+    ReportExporter.Write(markdownPath, snap, now.Date, "model-a", exportHours);
+    string markdown = File.ReadAllText(markdownPath);
+    Check(markdown.Contains("| 09:00–10:00 | 2 | 21.50 | 22.25 |") && markdown.Contains("| 10:00–11:00 | 0 | — | — |"),
+        "Markdown 报告包含有效与空样本行");
+    string jsonPath = Path.Combine(directory, "report.json");
+    ReportExporter.Write(jsonPath, snap, now.Date, null, exportHours);
+    using var reportJson = JsonDocument.Parse(File.ReadAllText(jsonPath));
+    Check(reportJson.RootElement.GetProperty("timezone").GetString() == "UTC+8"
+        && reportJson.RootElement.GetProperty("model").GetString() == "全部模型"
+        && reportJson.RootElement.GetProperty("hours").GetArrayLength() == 2, "JSON 报告字段与导出参数一致");
 }
 finally { Directory.Delete(directory, true); }
-Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行与旧格式告警。");
+Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、等长重写、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行、旧格式告警、设置往返与报告导出。");
