@@ -11,6 +11,7 @@
         Background="Transparent"
         ShowInTaskbar="False"
         Topmost="True"
+        PointerPressed="DragPanel"
         FontFamily="{DynamicResource InterFont}"
         FontSize="12"
         Foreground="#262629">
@@ -56,7 +57,7 @@
       <DropShadowEffect BlurRadius="22" OffsetX="0" OffsetY="5" Opacity="0.2"/>
     </Border.Effect>
     <StackPanel>
-      <Grid Margin="16,13,12,12" PointerPressed="DragHeader">
+      <Grid Margin="16,13,12,12" Background="Transparent">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="36"/>
           <ColumnDefinition Width="*"/>

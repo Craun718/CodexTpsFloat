@@ -15,6 +15,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace CodexTpsFloat.App;
 
@@ -256,14 +257,23 @@ public partial class MainWindow : Window
         if (error != null && !closing) ToolTip.SetTip(StatusText, "设置保存失败：" + error);
     }
 
-    void DragHeader(object? sender, PointerPressedEventArgs e)
+    void DragPanel(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        if (e.Source is Visual source && HasInteractiveAncestor(source)) return;
         BeginMoveDrag(e);
         settings.X = Position.X / (Screens.ScreenFromWindow(this)?.Scaling ?? 1);
         settings.Y = Position.Y / (Screens.ScreenFromWindow(this)?.Scaling ?? 1);
         SaveSettings();
     }
+
+    // macOS three-finger drag and ordinary mouse drag both end up here, so the whole
+    // panel is a drag surface except for controls that need the press themselves.
+    static bool HasInteractiveAncestor(Visual source) =>
+        source.FindAncestorOfType<Button>() != null
+        || source.FindAncestorOfType<TextBox>() != null
+        || source.FindAncestorOfType<ComboBox>() != null
+        || source.FindAncestorOfType<DataGrid>() != null;
 
     async void RefreshClick(object? sender, RoutedEventArgs e) => await RefreshAsync();
 
