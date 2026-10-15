@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run core regression tests
+        run: dotnet run --project tests/CoreTests.csproj -c Release --nologo
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            runtime: win-x64
+            shell: pwsh
+          - runner: macos-15
+            runtime: osx-arm64
+            shell: bash
+          - runner: macos-15-intel
+            runtime: osx-x64
+            shell: bash
+          - runner: ubuntu-latest
+            runtime: linux-x64
+            shell: bash
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run hidden tray lifecycle tests (Windows only)
+        if: runner.os == 'Windows'
+        run: dotnet run --project tests/TrayLifecycleTests.csproj -c Release --nologo -- --never-show
+
+      - name: Build portable application
+        if: runner.os == 'Windows'
+        run: ./build.ps1 -Runtime ${{ matrix.runtime }} -Portable
+
+      - name: Build portable application
+        if: runner.os != 'Windows'
+        run: PORTABLE=1 ./build.sh ${{ matrix.runtime }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: CodexTpsFloat-ci-${{ matrix.runtime }}-${{ github.sha }}
+          path: app
+          if-no-files-found: error
+          retention-days: 14
