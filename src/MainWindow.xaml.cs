@@ -45,8 +45,11 @@ public partial class MainWindow : Window
         PinButton.Foreground = new SolidColorBrush(settings.Pinned ? Color.FromRgb(0, 122, 255) : Colors.Gray);
         DateBox.SelectedDate = BeijingNow.Date;
         StartupBox.IsChecked = autostart.IsEnabled();
+        // Assign the selection instead of toggling IsSelected on every item: clearing a later
+        // item's IsSelected would also clear the selection just set on an earlier one.
         foreach (var item in CadenceBox.Items.OfType<ComboBoxItem>())
-            item.IsSelected = item.Tag?.ToString() == settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture);
+            if (item.Tag?.ToString() == settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture))
+                CadenceBox.SelectedItem = item;
         foreach (var radio in new[] { MinuteWindow, FiveMinuteWindow, HalfHourWindow, HourWindow })
             if (radio.Tag?.ToString() == settings.WindowSeconds.ToString(CultureInfo.InvariantCulture)) radio.IsChecked = true;
         timer.Interval = TimeSpan.FromSeconds(settings.RefreshSeconds);

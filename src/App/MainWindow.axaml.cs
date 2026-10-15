@@ -73,8 +73,11 @@ public partial class MainWindow : Window
         ModelBox.ItemsSource = models;
         ModelBox.SelectedIndex = 0;
 
+        // Assign the selection instead of toggling IsSelected on every item: clearing a later
+        // item's IsSelected would also clear the selection just set on an earlier one.
         foreach (var item in CadenceBox.Items.OfType<ComboBoxItem>())
-            item.IsSelected = item.Tag?.ToString() == settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture);
+            if (item.Tag?.ToString() == settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture))
+                CadenceBox.SelectedItem = item;
         foreach (var radio in new[] { MinuteWindow, FiveMinuteWindow, HalfHourWindow, HourWindow })
             radio.IsChecked = radio.Tag?.ToString() == settings.WindowSeconds.ToString(CultureInfo.InvariantCulture);
         foreach (var radio in new[] { MinuteWindow, FiveMinuteWindow, HalfHourWindow, HourWindow })
