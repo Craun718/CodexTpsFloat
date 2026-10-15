@@ -14,5 +14,5 @@
     <EnableWindowsTargeting Condition="'$(OS)' != 'Windows_NT'">true</EnableWindowsTargeting>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="Core/CodexTpsFloat.Core.csproj"/></ItemGroup>
-  <ItemGroup><Compile Remove="Core/**/*.cs"/></ItemGroup>
+  <ItemGroup><Compile Remove="Core/**/*.cs;App/**/*.cs"/></ItemGroup>
 </Project>
