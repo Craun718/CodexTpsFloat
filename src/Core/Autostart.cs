@@ -92,6 +92,20 @@ public sealed class MacAutostart : IAutostartService
 
 public sealed class LinuxAutostart : IAutostartService
 {
+    // Exec quoting is decoded after desktop-entry string escapes.
+    static string EncodeExecutable(string path)
+    {
+        if (path.Contains('=') || path.Contains('\0'))
+            throw new ArgumentException("登录启动路径不能包含等号或空字符。");
+        var quoted = new StringBuilder();
+        foreach (char c in path)
+        {
+            if (c is '\\' or '"' or '`' or '$') quoted.Append('\\');
+            quoted.Append(c == '%' ? "%%" : c.ToString());
+        }
+        return quoted.ToString().Replace("\\", "\\\\").Replace("\n", "\\n")
+            .Replace("\r", "\\r").Replace("\t", "\\t");
+    }
     readonly string executable;
     readonly string desktopPath;
     public LinuxAutostart(string executable, string autostartDirectory) =>
@@ -107,13 +121,13 @@ public sealed class LinuxAutostart : IAutostartService
                 [Desktop Entry]
                 Type=Application
                 Name=Codex TPS
-                Exec="{executable}"
+                Exec="{EncodeExecutable(executable)}"
                 Terminal=false
                 X-GNOME-Autostart-enabled=true
                 """;
             File.WriteAllText(desktopPath, desktop, new UTF8Encoding(false));
             return null;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return e.Message; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { return e.Message; }
     }
 }

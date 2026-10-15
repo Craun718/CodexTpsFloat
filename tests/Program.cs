@@ -218,6 +218,24 @@ try
         "登录启动条目包含可执行路径与自启标记");
     Check(login.SetEnabled(false) == null && !login.IsEnabled() && !File.Exists(entry), "停用登录启动会移除条目");
 
+    string linuxEntryDirectory = Path.Combine(directory, "linux-escaping");
+    var escapedLogin = new LinuxAutostart("/opt/a\"b\\c%d$e`f\napp", linuxEntryDirectory);
+    Check(escapedLogin.SetEnabled(true) == null, "Linux 特殊字符路径可写入自启动条目");
+    string execLine = File.ReadAllLines(Path.Combine(linuxEntryDirectory, "CodexTpsFloat.desktop"))
+        .Single(line => line.StartsWith("Exec="));
+    // Decode desktop-entry escapes, then Exec quoting and literal percent codes.
+    string decodedExec = execLine[6..^1].Replace("\\n", "\n").Replace("\\\\", "\\");
+    var decodedPath = new StringBuilder();
+    for (int i = 0; i < decodedExec.Length; i++)
+    {
+        if (decodedExec[i] == '\\') i++;
+        else if (decodedExec[i] == '%' && decodedExec[i + 1] == '%') i++;
+        decodedPath.Append(decodedExec[i]);
+    }
+    Check(decodedPath.ToString() == "/opt/a\"b\\c%d$e`f\napp", "Exec 两层转义后保留原始路径且不插入新条目");
+    Check(new LinuxAutostart("/opt/a=b/app", linuxEntryDirectory).SetEnabled(true) != null,
+        "拒绝 Desktop Entry 规范禁止的可执行路径");
+
     string instanceName = "codex-tps-test-" + Guid.NewGuid().ToString("N") + new string('x', 80);
     string instanceDirectory = Path.Combine(directory, "instance");
     string readyPath = Path.Combine(directory, "instance-ready");
