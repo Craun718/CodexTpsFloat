@@ -257,6 +257,7 @@ public partial class MainWindow : Window
 
     void SaveSettings()
     {
+        if (capturePath != null) return;
         string? error = settingsStore.Save(settings);
         if (error != null && !closing) ToolTip.SetTip(StatusText, "设置保存失败：" + error);
     }
