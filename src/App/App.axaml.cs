@@ -36,7 +36,9 @@ public partial class App : Application
             await window.StartAsync();
             if (Options.CapturePath != null)
                 await window.CaptureAndCloseAsync(Options.CapturePath);
-            else if (!window.HasTray)
+            // Avalonia can create a tray icon on macOS without macOS displaying it,
+            // so there is no reliable way to detect an unusable menu bar item.
+            else if (OperatingSystem.IsMacOS() || !window.HasTray)
                 window.ShowPanel();
         };
 
