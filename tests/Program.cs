@@ -173,6 +173,21 @@ try
     Check(reportJson.RootElement.GetProperty("timezone").GetString() == "UTC+8"
         && reportJson.RootElement.GetProperty("model").GetString() == "全部模型"
         && reportJson.RootElement.GetProperty("hours").GetArrayLength() == 2, "JSON 报告字段与导出参数一致");
+
+    string entry = OperatingSystem.IsMacOS()
+        ? Path.Combine(directory, "LaunchAgents", "com.codextpsfloat.plist")
+        : Path.Combine(directory, "config", "autostart", "CodexTpsFloat.desktop");
+    IAutostartService login = OperatingSystem.IsMacOS()
+        ? new MacAutostart("/Applications/Codex TPS.app", Path.GetDirectoryName(entry))
+        : new LinuxAutostart("/opt/codex tps/CodexTpsFloat", Path.Combine(directory, "config"));
+    Check(!login.IsEnabled(), "未启用时登录启动为关闭状态");
+    Check(login.SetEnabled(true) == null && login.IsEnabled(), "启用登录启动会创建条目");
+    string entryText = File.ReadAllText(entry);
+    Check(OperatingSystem.IsMacOS()
+        ? entryText.Contains("<string>/Applications/Codex TPS.app</string>") && entryText.Contains("<key>RunAtLoad</key>")
+        : entryText.Contains("Exec=\"/opt/codex tps/CodexTpsFloat\"") && entryText.StartsWith("[Desktop Entry]"),
+        "登录启动条目包含可执行路径与自启标记");
+    Check(login.SetEnabled(false) == null && !login.IsEnabled() && !File.Exists(entry), "停用登录启动会移除条目");
 }
 finally { Directory.Delete(directory, true); }
-Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、等长重写、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行、旧格式告警、设置往返与报告导出。");
+Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、等长重写、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行、旧格式告警、设置往返、报告导出与登录启动。");

@@ -17,12 +17,7 @@ public sealed class SettingsStore
     public static SettingsStore ForPortableApp(string baseDirectory) =>
         new(System.IO.Path.Combine(baseDirectory, "data", "settings.json"));
     public static SettingsStore ForUserProfile(string appName = "CodexTpsFloat")
-    {
-        string root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        if (string.IsNullOrEmpty(root))
-            root = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
-        return new(System.IO.Path.Combine(root, appName, "settings.json"));
-    }
+        => new(System.IO.Path.Combine(PlatformPaths.UserConfigDirectory(appName), "settings.json"));
     public PanelSettings Load()
     {
         try

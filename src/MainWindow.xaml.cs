@@ -18,9 +18,9 @@ namespace CodexTpsFloat;
 
 public partial class MainWindow : Window
 {
-    const string StartupName = "CodexTpsFloat";
     readonly DispatcherTimer timer = new();
     readonly Forms.NotifyIcon tray;
+    readonly IAutostartService autostart = Autostart.Create();
     readonly SettingsStore settingsStore = OperatingSystem.IsWindows()
         ? SettingsStore.ForPortableApp(AppContext.BaseDirectory)
         : SettingsStore.ForUserProfile();
@@ -44,7 +44,7 @@ public partial class MainWindow : Window
         TopmostBox.IsChecked = settings.Pinned;
         PinButton.Foreground = new SolidColorBrush(settings.Pinned ? Color.FromRgb(0, 122, 255) : Colors.Gray);
         DateBox.SelectedDate = BeijingNow.Date;
-        StartupBox.IsChecked = StartupEnabled();
+        StartupBox.IsChecked = autostart.IsEnabled();
         foreach (var item in CadenceBox.Items.OfType<ComboBoxItem>())
             item.IsSelected = item.Tag?.ToString() == settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture);
         foreach (var radio in new[] { MinuteWindow, FiveMinuteWindow, HalfHourWindow, HourWindow })
@@ -240,21 +240,12 @@ public partial class MainWindow : Window
         settings.CodexHome = dialog.SelectedPath; HomeBox.Text = settings.CodexHome;
         scanner = new(settings.CodexHome); requestClocks = new(settings.CodexHome); SaveSettings(); await RefreshAsync();
     }
-    static bool StartupEnabled()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        return key?.GetValue(StartupName) is string value && value == $"\"{Environment.ProcessPath}\"";
-    }
     void StartupClick(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-            if (StartupBox.IsChecked == true) key.SetValue(StartupName, $"\"{Environment.ProcessPath}\"");
-            else key.DeleteValue(StartupName, false);
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException)
-        { StartupBox.IsChecked = StartupEnabled(); MessageBox.Show(this, "登录启动设置失败：" + ex.Message, "Codex TPS"); }
+        string? error = autostart.SetEnabled(StartupBox.IsChecked == true);
+        if (error == null) return;
+        StartupBox.IsChecked = autostart.IsEnabled();
+        MessageBox.Show(this, "登录启动设置失败：" + error, "Codex TPS");
     }
     void ExportClick(object sender, RoutedEventArgs e)
     {
