@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -77,7 +79,7 @@ public sealed class SingleInstance : IDisposable
     static SingleInstance CreateUnix(Mutex mutex, bool first, string scopedName,
         Action? showExisting)
     {
-        string socketPath = Path.Combine(Path.GetTempPath(), scopedName + ".sock");
+        string socketPath = UnixSocketPath(scopedName);
         Socket? listener = null;
         CancellationTokenSource? cancellation = null;
         Task? acceptLoop = null;
@@ -104,6 +106,15 @@ public sealed class SingleInstance : IDisposable
         }
         return new(mutex, first, unixListener: listener, unixSocketPath: socketPath,
             unixCancellation: cancellation, unixAcceptLoop: acceptLoop);
+    }
+
+    static string UnixSocketPath(string scopedName)
+    {
+        // Unix domain socket paths are limited to roughly 100 bytes. Keep the
+        // temporary path bounded even when the logical instance name is long.
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(scopedName)))
+            .ToLowerInvariant();
+        return Path.Combine(Path.GetTempPath(), $"CodexTpsFloat-{hash[..16]}.sock");
     }
 
     static async Task AcceptConnectionsAsync(Socket listener, CancellationToken cancellation,

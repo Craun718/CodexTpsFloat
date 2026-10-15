@@ -188,6 +188,15 @@ try
         : entryText.Contains("Exec=\"/opt/codex tps/CodexTpsFloat\"") && entryText.StartsWith("[Desktop Entry]"),
         "登录启动条目包含可执行路径与自启标记");
     Check(login.SetEnabled(false) == null && !login.IsEnabled() && !File.Exists(entry), "停用登录启动会移除条目");
+
+    string instanceName = "codex-tps-test-" + Guid.NewGuid().ToString("N") + new string('x', 80);
+    using var existingInstance = new ManualResetEventSlim(false);
+    using var firstInstance = SingleInstance.Create(instanceName, () => existingInstance.Set());
+    Check(firstInstance.IsFirstInstance, "首个单实例进程获得所有权");
+    using var secondInstance = SingleInstance.Create(instanceName);
+    Check(!secondInstance.IsFirstInstance, "第二个进程不会重复启动界面");
+    secondInstance.SignalExistingInstance();
+    Check(existingInstance.Wait(TimeSpan.FromSeconds(5)), "第二个进程会唤醒已有实例");
 }
 finally { Directory.Delete(directory, true); }
-Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、等长重写、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行、旧格式告警、设置往返、报告导出与登录启动。");
+Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、等长重写、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行、旧格式告警、设置往返、报告导出、登录启动与单实例唤醒。");
