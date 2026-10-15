@@ -96,6 +96,43 @@ try
     File.AppendAllText(streamFile, secondRow + "\n", new UTF8Encoding(false));
     Check(streamed.Refresh(now).Records.Count == 2 && streamed.Refresh(now).InvalidLines == 0,
         "长行后继续增量读取，CRLF 和 LF 不重复或遗漏记录");
+
+    string legacyRoot = Path.Combine(directory, "legacy");
+    Directory.CreateDirectory(Path.Combine(legacyRoot, "sessions"));
+    string legacyFile = Path.Combine(legacyRoot, "sessions", "aborted.jsonl");
+    File.WriteAllText(legacyFile, string.Join("\n",
+        Event("event_msg", new { type = "task_started", turn_id = "aborted" }, origin),
+        Event("event_msg", new { type = "item_completed", turn_id = "aborted",
+            item = new { type = "UserMessage", id = "user-item" } }, origin + 1),
+        Event("event_msg", new { type = "token_count", info = (object?)null }, origin + 2),
+        Event("event_msg", new { type = "turn_aborted", turn_id = "aborted" }, origin + 3)) + "\n", new UTF8Encoding(false));
+    var legacy = new UsageScanner(legacyRoot);
+    var aborted = legacy.Refresh(now);
+    Check(aborted.UnsupportedFiles == 0 && aborted.Records.Count == 0 && aborted.InvalidLines == 0,
+        "仅有空 token_count 的中断会话不触发旧格式告警");
+    File.AppendAllText(legacyFile,
+        Event("event_msg", new { type = "token_count" }, origin + 4) + "\n" +
+        Event("event_msg", new { type = "token_count", info = new { } }, origin + 5) + "\n" +
+        Event("event_msg", new { type = "token_count", info = new {
+            total_token_usage = new { input_tokens = 100, output_tokens = 0 },
+            last_token_usage = new { input_tokens = 100, output_tokens = 0 } } }, origin + 6) + "\n", new UTF8Encoding(false));
+    Check(legacy.Refresh(now).UnsupportedFiles == 0, "缺失或零输出用量不触发旧格式告警");
+    File.AppendAllText(legacyFile, Event("event_msg", new { type = "token_count",
+        info = new { total_token_usage = new { output_tokens = 10 } } }, origin + 7) + "\n", new UTF8Encoding(false));
+    var actualLegacy = legacy.Refresh(now);
+    Check(actualLegacy.UnsupportedFiles == 1 && actualLegacy.Records.Count == 0,
+        "增量读到真实旧格式输出用量后仍告警，不虚构响应样本");
+    File.AppendAllText(legacyFile, Event("event_msg", new { type = "token_count", info = (object?)null }, origin + 8) + "\n",
+        new UTF8Encoding(false));
+    Check(legacy.Refresh(now).UnsupportedFiles == 1, "后续空用量事件不清除已有旧格式告警");
+    File.WriteAllText(Path.Combine(legacyRoot, "sessions", "last-usage.jsonl"), Event("event_msg",
+        new { type = "token_count", info = new { last_token_usage = new { output_tokens = 5 } } }, origin + 9) + "\n",
+        new UTF8Encoding(false));
+    Check(legacy.Refresh(now).UnsupportedFiles == 2, "逐次旧格式输出用量也触发告警");
+    File.AppendAllText(legacyFile, row + "\n", new UTF8Encoding(false));
+    var modern = legacy.Refresh(now);
+    Check(modern.UnsupportedFiles == 1 && modern.Records.Count == 1 && modern.InvalidLines == 0,
+        "同文件出现逐次 token_usage_record 后恢复可计量状态");
 }
 finally { Directory.Delete(directory, true); }
-Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、坏记录、BOM、跨缓冲区长行、CRLF 与中文字符中间补全尾行。");
+Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行与旧格式告警。");

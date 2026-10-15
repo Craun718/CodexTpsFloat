@@ -1,0 +1,98 @@
+name: Release portable Windows app
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check tag matches application version
+        run: |
+          [xml]$project = Get-Content src/CodexTpsFloat.csproj -Raw
+          $version = $project.Project.PropertyGroup.Version
+          if ($env:GITHUB_REF_NAME -cne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match application version v$version."
+          }
+
+      - name: Run core regression tests
+        run: dotnet run --project tests/CoreTests.csproj -c Release --nologo
+
+      - name: Run hidden tray lifecycle tests
+        run: dotnet run --project tests/TrayLifecycleTests.csproj -c Release --nologo -- --never-show
+
+      - name: Build portable application
+        run: ./build.ps1 -Portable
+
+      - name: Package portable ZIP and checksum
+        id: package
+        run: |
+          $assetDirectory = Join-Path $env:RUNNER_TEMP 'release-assets'
+          $stagingDirectory = Join-Path $env:RUNNER_TEMP 'portable-package'
+          New-Item -ItemType Directory -Path $assetDirectory, $stagingDirectory | Out-Null
+          Copy-Item -LiteralPath 'app/CodexTpsFloat.exe', 'README.md', 'PRIVACY.md', 'THIRD-PARTY-NOTICES.md' -Destination $stagingDirectory
+          Copy-Item -LiteralPath 'licenses' -Destination $stagingDirectory -Recurse
+          $archiveName = "CodexTpsFloat-$env:GITHUB_REF_NAME-win-x64-portable.zip"
+          $archivePath = Join-Path $assetDirectory $archiveName
+          Compress-Archive -Path "$stagingDirectory/*" -DestinationPath $archivePath -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archiveName" | Set-Content -LiteralPath "$archivePath.sha256" -Encoding ascii
+          "directory=$assetDirectory" >> $env:GITHUB_OUTPUT
+          "archive=$archivePath" >> $env:GITHUB_OUTPUT
+
+      - name: Smoke test extracted portable application
+        env:
+          PORTABLE_ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          $smokeDirectory = Join-Path $env:RUNNER_TEMP 'portable-smoke'
+          Expand-Archive -LiteralPath $env:PORTABLE_ARCHIVE -DestinationPath $smokeDirectory
+          $fixtureDirectory = Join-Path $env:RUNNER_TEMP 'fixture-codex-home'
+          $sessionDirectory = Join-Path $fixtureDirectory 'sessions'
+          New-Item -ItemType Directory -Path $sessionDirectory | Out-Null
+          @(
+            '{"type":"event_msg","timestamp":"2026-10-14T00:00:00Z","payload":{"type":"task_started","turn_id":"smoke-turn"}}'
+            '{"type":"event_msg","timestamp":"2026-10-14T00:00:01Z","payload":{"type":"token_count","info":null}}'
+            '{"type":"event_msg","timestamp":"2026-10-14T00:00:02Z","payload":{"type":"turn_aborted","turn_id":"smoke-turn"}}'
+          ) | Set-Content -LiteralPath (Join-Path $sessionDirectory 'aborted.jsonl') -Encoding utf8
+          $snapshotPath = Join-Path $env:RUNNER_TEMP 'portable-snapshot.json'
+          $arguments = @('--codex-home', ('"' + $fixtureDirectory + '"'), '--snapshot-json', ('"' + $snapshotPath + '"'))
+          $process = Start-Process -FilePath (Join-Path $smokeDirectory 'CodexTpsFloat.exe') -ArgumentList $arguments -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            $process.Kill()
+            throw 'Portable snapshot timed out.'
+          }
+          if ($process.ExitCode -ne 0) { throw "Portable snapshot failed: $($process.ExitCode)" }
+          $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json
+          if ($snapshot.Files -ne 1 -or $snapshot.InvalidLines -ne 0 -or $snapshot.UnsupportedFiles -ne 0 -or $snapshot.ReadFailures -ne 0) {
+            throw 'Portable snapshot incorrectly reports an aborted session as unsupported.'
+          }
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_ASSET_DIRECTORY: ${{ steps.package.outputs.directory }}
+        run: |
+          $assets = @(Get-ChildItem -LiteralPath $env:RELEASE_ASSET_DIRECTORY -File | Select-Object -ExpandProperty FullName)
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Codex TPS $env:GITHUB_REF_NAME" --notes-from-tag --latest

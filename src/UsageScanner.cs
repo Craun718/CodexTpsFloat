@@ -56,6 +56,8 @@ public sealed class UsageScanner
         e.TryGetProperty(k, out var p) && p.TryGetDouble(out var n) && double.IsFinite(n) ? n : null;
     static long Count(JsonElement e, string k) =>
         e.TryGetProperty(k, out var p) && p.TryGetInt64(out var n) && n >= 0 ? n : 0;
+    static bool HasOutputUsage(JsonElement info, string key) =>
+        info.TryGetProperty(key, out var u) && u.ValueKind == JsonValueKind.Object && Count(u, "output_tokens") > 0;
     TurnData Turn(string id)
     {
         if (!turns.TryGetValue(id, out var turn)) turns[id] = turn = new();
@@ -86,7 +88,14 @@ public sealed class UsageScanner
         if (type == "event_msg")
         {
             string eventType = Str(p, "type");
-            if (eventType == "token_count") { cursor.HasLegacyUsage = true; return; }
+            if (eventType == "token_count")
+            {
+                // Rate-limit-only updates do not imply a generated response.
+                if (p.TryGetProperty("info", out var info) && info.ValueKind == JsonValueKind.Object
+                    && (HasOutputUsage(info, "total_token_usage") || HasOutputUsage(info, "last_token_usage")))
+                    cursor.HasLegacyUsage = true;
+                return;
+            }
             if (turnId.Length == 0) return;
             var turn = Turn(turnId);
             if (eventType == "task_started")

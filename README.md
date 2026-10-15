@@ -4,9 +4,9 @@ Windows 10/11 x64 的本机日志监视工具，默认运行在系统托盘，�
 
 ## 使用
 
-双击 `app/CodexTpsFloat.exe`。便携版包含运行时，不需要安装 Python 或 .NET，不需要管理员权限。
+从 [GitHub Releases](https://github.com/jinghero/CodexTpsFloat/releases/latest) 下载 `CodexTpsFloat-v版本号-win-x64-portable.zip`，解压后双击 `CodexTpsFloat.exe`。便携版包含运行时，不需要安装 Python 或 .NET，不需要管理员权限。请下载便携 ZIP；GitHub 自动附带的 `Source code` 压缩包只包含源码。
 
-GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码后，使用 .NET 10 SDK 运行 `./build.ps1 -Portable` 生成 `app/CodexTpsFloat.exe`。本机交付目录已包含构建好的程序。隐私与提交范围见 [PRIVACY.md](PRIVACY.md)。
+GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码后，使用 .NET 10 SDK 运行 `./build.ps1 -Portable` 生成 `app/CodexTpsFloat.exe`。Release 附件同时提供便携 ZIP 的 `.sha256` 校验文件。隐私与提交范围见 [PRIVACY.md](PRIVACY.md)。
 
 - 默认读取 `CODEX_HOME`；未设置时读取当前用户的 `.codex`。同时统计 `sessions` 与 `archived_sessions`。
 - 启动后只显示系统托盘图标；悬停显示当前生成速度估算。单击图标打开或收起统计面板，右键可打开面板、立即刷新或退出。面板展开时也不出现任务栏窗口按钮。
@@ -27,7 +27,7 @@ GitHub 源码仓库不包含可执行文件和本机运行数据。克隆源码�
 
 **轮次首字**是已经结束轮次的 `time_to_first_token_ms` 中位数，不代表每个内部请求的 TTFT。活跃会话以当前窗口内有已完成用量事件为准。
 
-分时统计按首个输出项的北京时间小时分组。不同日期、时段的任务和上下文不同，不能单凭速度变化断定服务端或网络性能变化。现代日志支持逐次 `token_usage_record`；只有旧版 `token_count` 的日志不会虚构逐次输出速度，状态会提示部分日志不可计量。
+分时统计按首个输出项的北京时间小时分组。不同日期、时段的任务和上下文不同，不能单凭速度变化断定服务端或网络性能变化。现代日志支持逐次 `token_usage_record`；只有旧版 `token_count` 且包含实际输出用量的日志不会虚构逐次输出速度，状态会提示部分日志不可计量。未生成响应、仅有空用量事件的中断会话不触发旧格式告警。
 
 ## 数据与运行方式
 
@@ -55,4 +55,16 @@ dotnet run --project .\tests\TrayLifecycleTests.csproj -c Release -- --never-sho
 .\build.ps1 -Portable
 ```
 
-源码中的 `--capture 文件.png` 用于界面验收，生成真实 WPF 控件渲染图后退出。便携 EXE 为本地构建，未进行 Authenticode 签名。
+源码中的 `--capture 文件.png` 用于界面验收，生成真实 WPF 控件渲染图后退出。便携 EXE 未进行 Authenticode 签名。
+
+## 发布新版本
+
+先修改 `src/CodexTpsFloat.csproj` 中的 `Version` 并提交、推送，再创建对应的 `v版本号` 标签。以下示例用于下一个补丁版本；标签说明会成为 Release 说明：
+
+```powershell
+git push origin main
+git tag -a v1.1.3 -m "Release v1.1.3"
+git push origin v1.1.3
+```
+
+推送标签后，GitHub Actions 会校验标签与项目版本一致，运行核心和隐藏托盘生命周期测试，调用 `build.ps1 -Portable` 构建 Windows x64 便携版，打包并验证解压后的程序，最后创建公开 Release 并上传 ZIP 和 SHA-256 校验文件。打包只包含程序、README、隐私说明和第三方许可证，不包含本机设置、日志或调试符号。
