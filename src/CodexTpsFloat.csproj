@@ -7,7 +7,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>CodexTpsFloat</AssemblyName>
-    <Version>1.1.3</Version>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <EnableWindowsTargeting Condition="'$(OS)' != 'Windows_NT'">true</EnableWindowsTargeting>
