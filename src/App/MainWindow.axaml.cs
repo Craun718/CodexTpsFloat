@@ -49,7 +49,7 @@ public partial class MainWindow : Window
         InitializeState();
 
         tray = OperatingSystem.IsBrowser() ? null : CreateTrayIcon();
-        HideButton.IsVisible = tray != null;
+        HideButton.IsVisible = HasTray;
         if (tray != null && Application.Current != null)
             TrayIcon.SetIcons(Application.Current, new TrayIcons { tray });
 
@@ -59,7 +59,9 @@ public partial class MainWindow : Window
 
     static DateTimeOffset BeijingNow => DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8));
 
-    public bool HasTray => tray != null;
+    // Linux can create the object without a status-notifier host. Keep the panel
+    // accessible until Avalonia exposes whether the host actually displays it.
+    public bool HasTray => tray != null && !OperatingSystem.IsLinux();
 
     void InitializeState()
     {
@@ -164,7 +166,7 @@ public partial class MainWindow : Window
 
     void TogglePanel()
     {
-        if (IsVisible) Hide();
+        if (IsVisible && HasTray) Hide();
         else ShowPanel();
     }
 
@@ -317,7 +319,7 @@ public partial class MainWindow : Window
 
     void HideClick(object? sender, RoutedEventArgs e)
     {
-        if (tray != null) Hide();
+        if (HasTray) Hide();
     }
 
     void ExitClick(object? sender, RoutedEventArgs e) => Close();
