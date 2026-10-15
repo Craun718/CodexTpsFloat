@@ -19,7 +19,7 @@ public static class Program
                 return SnapshotWriter.Write(options.SnapshotPath, options.CodexHome);
 
             using var singleInstance = SingleInstance.Create(
-                "CodexTpsFloat", () => App.ShowExistingPanel?.Invoke());
+                "CodexTpsFloat", App.ShowExistingPanel);
             if (!singleInstance.IsFirstInstance && options.CapturePath == null)
             {
                 singleInstance.SignalExistingInstance();

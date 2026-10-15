@@ -63,7 +63,11 @@ public sealed class SingleInstance : IDisposable
             RegisteredWaitHandle? registration = null;
             if (first && showExisting != null)
                 registration = ThreadPool.RegisterWaitForSingleObject(wake,
-                    (_, _) => showExisting(), null, Timeout.Infinite, false);
+                    (_, _) =>
+                    {
+                        try { showExisting(); }
+                        catch (Exception error) { Console.Error.WriteLine("显示统计面板失败：" + error.Message); }
+                    }, null, Timeout.Infinite, false);
             return new(first, mutex, wake, registration);
         }
         catch
