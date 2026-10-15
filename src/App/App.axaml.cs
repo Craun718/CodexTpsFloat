@@ -36,6 +36,8 @@ public partial class App : Application
             await window.StartAsync();
             if (Options.CapturePath != null)
                 await window.CaptureAndCloseAsync(Options.CapturePath);
+            else if (!window.HasTray)
+                window.ShowPanel();
         };
 
         base.OnFrameworkInitializationCompleted();

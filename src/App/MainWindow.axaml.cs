@@ -49,6 +49,7 @@ public partial class MainWindow : Window
         InitializeState();
 
         tray = OperatingSystem.IsBrowser() ? null : CreateTrayIcon();
+        HideButton.IsVisible = tray != null;
         if (tray != null && Application.Current != null)
             TrayIcon.SetIcons(Application.Current, new TrayIcons { tray });
 
@@ -57,6 +58,8 @@ public partial class MainWindow : Window
     }
 
     static DateTimeOffset BeijingNow => DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8));
+
+    public bool HasTray => tray != null;
 
     void InitializeState()
     {
@@ -296,7 +299,10 @@ public partial class MainWindow : Window
         ApplyPinned();
     }
 
-    void HideClick(object? sender, RoutedEventArgs e) => Hide();
+    void HideClick(object? sender, RoutedEventArgs e)
+    {
+        if (tray != null) Hide();
+    }
 
     void ExitClick(object? sender, RoutedEventArgs e) => Close();
 
