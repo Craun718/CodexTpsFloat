@@ -27,7 +27,6 @@ public partial class App : Application
 
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         window = new MainWindow(Options.CapturePath, Options.CodexHome);
-        desktop.MainWindow = window;
 
         if (Options.CapturePath == null)
             ShowExistingPanel = () => Dispatcher.UIThread.Post(window.ShowPanel);
