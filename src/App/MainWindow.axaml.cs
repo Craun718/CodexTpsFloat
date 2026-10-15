@@ -12,7 +12,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -107,6 +106,8 @@ public partial class MainWindow : Window
                 Menu = menu,
                 IsVisible = true
             };
+            // Let AppKit tint the transparent glyph for light/dark menu bars.
+            MacOSProperties.SetIsTemplateIcon(icon, OperatingSystem.IsMacOS());
             icon.Clicked += (_, _) => TogglePanel();
             return icon;
         }
@@ -495,24 +496,15 @@ static class TrayIconFactory
 {
     public static WindowIcon Create()
     {
-        const int size = 32;
-        var pixels = new byte[size * size * 4];
-        for (int y = 0; y < size; y++)
+        // An 18-point glyph rendered at 2x stays sharp on Retina displays.
+        // Leave transparent padding so the menu bar shows bars, not a solid square.
+        using var bitmap = new RenderTargetBitmap(new PixelSize(36, 36), new Vector(192, 192));
+        using (var drawing = bitmap.CreateDrawingContext())
         {
-            for (int x = 0; x < size; x++)
-            {
-                int index = (y * size + x) * 4;
-                pixels[index] = 0x00;
-                pixels[index + 1] = 0x7A;
-                pixels[index + 2] = 0xFF;
-                pixels[index + 3] = 0xFF;
-            }
-        }
-        using var bitmap = new WriteableBitmap(
-            new PixelSize(size, size), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Unpremul);
-        using (var buffer = bitmap.Lock())
-        {
-            System.Runtime.InteropServices.Marshal.Copy(pixels, 0, buffer.Address, pixels.Length);
+            IBrush brush = OperatingSystem.IsMacOS() ? Brushes.Black : new SolidColorBrush(Color.Parse("#007AFF"));
+            drawing.DrawRectangle(brush, null, new Rect(2, 10, 3, 6), 0.75, 0.75);
+            drawing.DrawRectangle(brush, null, new Rect(7.5, 6, 3, 10), 0.75, 0.75);
+            drawing.DrawRectangle(brush, null, new Rect(13, 2, 3, 14), 0.75, 0.75);
         }
         using var stream = new MemoryStream();
         bitmap.Save(stream);
