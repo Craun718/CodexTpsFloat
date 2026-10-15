@@ -4,7 +4,13 @@
 
 便携构建包含以下运行组件：
 
-- .NET 10 与 Windows Desktop 运行时：Microsoft / .NET Foundation，MIT 及其第三方许可。完整声明见 `licenses/dotnet-MIT.txt` 和 `licenses/dotnet-THIRD-PARTY-NOTICES.txt`。
+- .NET 10 运行时：Microsoft / .NET Foundation，MIT 及其第三方许可。完整声明见 `licenses/dotnet-MIT.txt` 和 `licenses/dotnet-THIRD-PARTY-NOTICES.txt`。
+- Avalonia 11.3.12 桌面 UI 组件：AvaloniaUI OÜ / The AvaloniaUI Project，MIT 许可，项目 https://github.com/AvaloniaUI/Avalonia 。许可全文见 `licenses/Avalonia-MIT.txt`。
+- SkiaSharp 2.88.9 与 HarfBuzzSharp 8.3.1.1：Xamarin / Microsoft，MIT 许可及其第三方许可，项目 https://github.com/mono/SkiaSharp 。许可全文见 `licenses/SkiaSharp-HarfBuzzSharp-MIT.txt`，第三方声明见 `licenses/SkiaSharp-HarfBuzzSharp-THIRD-PARTY-NOTICES.txt`。
+- Tmds.DBus.Protocol 0.21.2：Tom Deseyn 及贡献者，MIT 许可，项目 https://github.com/tmds/Tmds.DBus 。许可全文见 `licenses/Tmds.DBus.Protocol-MIT.txt`。
+- MicroCom.Runtime 0.11.0：Nikita Tsukanov，MIT 许可，项目 https://github.com/kekekeks/MicroCom 。许可全文见 `licenses/MicroCom.Runtime-MIT.txt`。
+- ANGLE（Avalonia Angle Windows Natives 2.1.25547.20250602）：The ANGLE Project Authors，BSD 许可，项目 https://github.com/AvaloniaUI/angle 。许可全文见 `licenses/ANGLE-BSD.txt`。
+- Inter 字体（通过 Avalonia.Fonts.Inter 分发）：The Inter Project Authors，SIL Open Font License 1.1，项目 https://github.com/rsms/inter 。该 NuGet 包元数据采用 MIT 许可，字体本身按 OFL 1.1 分发；字体许可全文见 `licenses/Inter-OFL-1.1.txt`。
 - Microsoft.Data.Sqlite 10.0.13：Microsoft，MIT 许可，项目 https://github.com/dotnet/efcore 。
 - SQLitePCLRaw 2.1.13：Eric Sink / SourceGear，Apache-2.0 许可，项目 https://github.com/ericsink/SQLitePCL.raw 。许可全文见 `licenses/Apache-2.0.txt`。
 - SQLite 本体：公有领域，声明 https://www.sqlite.org/copyright.html 。
