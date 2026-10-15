@@ -2,6 +2,22 @@ using System.Text;
 using System.Text.Json;
 using CodexTpsFloat;
 
+if (args.Length == 6 && args[0] == "--single-instance-child")
+{
+    string instanceName = args[1], stateDirectory = args[2], readyPath = args[3];
+    string wakePath = args[4], observedPath = args[5];
+    using var instance = SingleInstance.Create(instanceName,
+        () => File.WriteAllText(observedPath, "observed"), stateDirectory);
+    if (!instance.IsFirstInstance) return 3;
+    File.WriteAllText(readyPath, "ready");
+    for (int attempt = 0; attempt < 100; attempt++)
+    {
+        if (File.Exists(observedPath)) return 0;
+        Thread.Sleep(50);
+    }
+    return 4;
+}
+
 static string Event(string type, object payload, double second) => JsonSerializer.Serialize(new
 {
     type, timestamp = DateTimeOffset.FromUnixTimeMilliseconds((long)(second * 1000)).ToString("O"), payload
@@ -190,13 +206,43 @@ try
     Check(login.SetEnabled(false) == null && !login.IsEnabled() && !File.Exists(entry), "停用登录启动会移除条目");
 
     string instanceName = "codex-tps-test-" + Guid.NewGuid().ToString("N") + new string('x', 80);
-    using var existingInstance = new ManualResetEventSlim(false);
-    using var firstInstance = SingleInstance.Create(instanceName, () => existingInstance.Set());
-    Check(firstInstance.IsFirstInstance, "首个单实例进程获得所有权");
-    using var secondInstance = SingleInstance.Create(instanceName);
-    Check(!secondInstance.IsFirstInstance, "第二个进程不会重复启动界面");
-    secondInstance.SignalExistingInstance();
-    Check(existingInstance.Wait(TimeSpan.FromSeconds(5)), "第二个进程会唤醒已有实例");
+    string instanceDirectory = Path.Combine(directory, "instance");
+    string readyPath = Path.Combine(directory, "instance-ready");
+    string wakePath = Path.Combine(directory, "instance-wake");
+    string observedPath = Path.Combine(directory, "instance-observed");
+    using var child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+    {
+        FileName = Environment.ProcessPath!,
+        UseShellExecute = false,
+        ArgumentList =
+        {
+            "--single-instance-child", instanceName, instanceDirectory,
+            readyPath, wakePath, observedPath
+        }
+    }) ?? throw new Exception("无法启动单实例测试子进程");
+    try
+    {
+        for (int attempt = 0; attempt < 100 && !File.Exists(readyPath); attempt++)
+            Thread.Sleep(50);
+        Check(File.Exists(readyPath) && !child.HasExited, "子进程获得首个单实例所有权");
+        using var secondInstance = SingleInstance.Create(instanceName, stateDirectory: instanceDirectory);
+        Check(!secondInstance.IsFirstInstance, "第二个进程不会重复启动界面");
+        secondInstance.SignalExistingInstance();
+        for (int attempt = 0; attempt < 100 && !File.Exists(observedPath); attempt++)
+            Thread.Sleep(50);
+        Check(File.Exists(observedPath), "第二个进程会唤醒已有实例");
+        Check(child.WaitForExit(5000), "已有实例收到唤醒后正常退出");
+        Check(child.ExitCode == 0, "已有实例退出码正确");
+    }
+    finally
+    {
+        if (!child.HasExited)
+        {
+            child.Kill(true);
+            child.WaitForExit();
+        }
+    }
 }
 finally { Directory.Delete(directory, true); }
 Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、等长重写、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行、旧格式告警、设置往返、报告导出、登录启动与单实例唤醒。");
+return 0;

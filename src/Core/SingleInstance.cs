@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -10,52 +9,62 @@ namespace CodexTpsFloat;
 
 /// <summary>
 /// Keeps one panel per user and wakes the running instance on a second launch.
-/// Windows uses named synchronization objects; Unix uses a Unix domain socket
-/// because .NET does not support named event wait handles on those platforms.
+/// Windows uses named synchronization objects; Unix uses an exclusive lock file
+/// plus an atomically replaced wake request because .NET does not provide named
+/// event wait handles on those platforms.
 /// </summary>
 public sealed class SingleInstance : IDisposable
 {
-    readonly Mutex mutex;
-    readonly bool ownsMutex;
+    readonly Mutex? mutex;
     readonly EventWaitHandle? windowsWake;
     readonly RegisteredWaitHandle? windowsRegistration;
-    readonly Socket? unixListener;
-    readonly string? unixSocketPath;
+    readonly FileStream? unixLock;
+    readonly string? unixWakePath;
     readonly CancellationTokenSource? unixCancellation;
-    readonly Task? unixAcceptLoop;
+    readonly Task? unixWakeLoop;
+    readonly bool ownsInstance;
     bool disposed;
 
-    SingleInstance(Mutex mutex, bool ownsMutex,
+    SingleInstance(bool ownsInstance, Mutex? mutex = null,
         EventWaitHandle? windowsWake = null,
         RegisteredWaitHandle? windowsRegistration = null,
-        Socket? unixListener = null,
-        string? unixSocketPath = null,
+        FileStream? unixLock = null,
+        string? unixWakePath = null,
         CancellationTokenSource? unixCancellation = null,
-        Task? unixAcceptLoop = null)
+        Task? unixWakeLoop = null)
     {
+        this.ownsInstance = ownsInstance;
         this.mutex = mutex;
-        this.ownsMutex = ownsMutex;
         this.windowsWake = windowsWake;
         this.windowsRegistration = windowsRegistration;
-        this.unixListener = unixListener;
-        this.unixSocketPath = unixSocketPath;
+        this.unixLock = unixLock;
+        this.unixWakePath = unixWakePath;
         this.unixCancellation = unixCancellation;
-        this.unixAcceptLoop = unixAcceptLoop;
+        this.unixWakeLoop = unixWakeLoop;
     }
 
-    public bool IsFirstInstance => ownsMutex;
+    public bool IsFirstInstance => ownsInstance;
 
-    public static SingleInstance Create(string name, Action? showExisting = null)
+    public static SingleInstance Create(string name, Action? showExisting = null,
+        string? stateDirectory = null)
     {
-        string scopedName = OperatingSystem.IsWindows()
-            ? name
-            : $"CodexTpsFloat.{Environment.UserName}.{name}";
-        var mutex = new Mutex(true, scopedName + ".Panel", out bool first);
+        if (OperatingSystem.IsWindows())
+            return CreateWindows(name, showExisting);
+        return CreateUnix(name, showExisting, stateDirectory);
+    }
+
+    static SingleInstance CreateWindows(string name, Action? showExisting)
+    {
+        string scopedName = $"Local\\{name}.Panel.v1";
+        var mutex = new Mutex(true, scopedName, out bool first);
         try
         {
-            return OperatingSystem.IsWindows()
-                ? CreateWindows(mutex, first, scopedName, showExisting)
-                : CreateUnix(mutex, first, scopedName, showExisting);
+            var wake = new EventWaitHandle(false, EventResetMode.AutoReset, scopedName + ".Show");
+            RegisteredWaitHandle? registration = null;
+            if (first && showExisting != null)
+                registration = ThreadPool.RegisterWaitForSingleObject(wake,
+                    (_, _) => showExisting(), null, Timeout.Infinite, false);
+            return new(first, mutex, wake, registration);
         }
         catch
         {
@@ -65,88 +74,81 @@ public sealed class SingleInstance : IDisposable
         }
     }
 
-    static SingleInstance CreateWindows(Mutex mutex, bool first, string scopedName,
-        Action? showExisting)
+    static SingleInstance CreateUnix(string name, Action? showExisting, string? stateDirectory)
     {
-        var wake = new EventWaitHandle(false, EventResetMode.AutoReset, scopedName + ".Show");
-        RegisteredWaitHandle? registration = null;
-        if (first && showExisting != null)
-            registration = ThreadPool.RegisterWaitForSingleObject(wake,
-                (_, _) => showExisting(), null, Timeout.Infinite, false);
-        return new(mutex, first, wake, registration);
-    }
+        string scopedName = $"{Environment.UserName}.{name}";
+        string directory = stateDirectory ?? PlatformPaths.UserCacheDirectory();
+        Directory.CreateDirectory(directory);
+        string key = InstanceKey(scopedName);
+        string lockPath = Path.Combine(directory, $"instance-{key}.lock");
+        string wakePath = Path.Combine(directory, $"instance-{key}.wake");
 
-    static SingleInstance CreateUnix(Mutex mutex, bool first, string scopedName,
-        Action? showExisting)
-    {
-        string socketPath = UnixSocketPath(scopedName);
-        Socket? listener = null;
-        CancellationTokenSource? cancellation = null;
-        Task? acceptLoop = null;
-        if (first)
+        FileStream? lockFile = null;
+        bool owns = false;
+        try
         {
             try
             {
-                if (File.Exists(socketPath)) File.Delete(socketPath);
-                listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                listener.Bind(new UnixDomainSocketEndPoint(socketPath));
-                listener.Listen(1);
-                cancellation = new CancellationTokenSource();
-                if (showExisting != null)
-                    acceptLoop = AcceptConnectionsAsync(listener, cancellation.Token, showExisting);
+                lockFile = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
+                    FileShare.None);
+                owns = true;
             }
-            catch (Exception e) when (e is SocketException or IOException
-                or UnauthorizedAccessException)
+            catch (IOException)
             {
-                listener?.Dispose();
-                listener = null;
+            }
+
+            if (!owns)
+                return new(false, unixWakePath: wakePath);
+
+            CancellationTokenSource? cancellation = null;
+            try
+            {
+                if (File.Exists(wakePath)) File.Delete(wakePath);
+                cancellation = new CancellationTokenSource();
+                Task? wakeLoop = showExisting == null
+                    ? null
+                    : WatchWakeRequestsAsync(wakePath, cancellation.Token, showExisting);
+                return new(true, unixLock: lockFile, unixWakePath: wakePath,
+                    unixCancellation: cancellation, unixWakeLoop: wakeLoop);
+            }
+            catch
+            {
                 cancellation?.Dispose();
-                cancellation = null;
+                throw;
             }
         }
-        return new(mutex, first, unixListener: listener, unixSocketPath: socketPath,
-            unixCancellation: cancellation, unixAcceptLoop: acceptLoop);
+        catch
+        {
+            lockFile?.Dispose();
+            throw;
+        }
     }
 
-    static string UnixSocketPath(string scopedName)
-    {
-        // Unix domain socket paths are limited to roughly 100 bytes. Keep the
-        // temporary path bounded even when the logical instance name is long.
-        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(scopedName)))
-            .ToLowerInvariant();
-        return Path.Combine(Path.GetTempPath(), $"CodexTpsFloat-{hash[..16]}.sock");
-    }
+    static string InstanceKey(string scopedName) => Convert.ToHexString(
+        SHA256.HashData(Encoding.UTF8.GetBytes(scopedName))).ToLowerInvariant()[..16];
 
-    static async Task AcceptConnectionsAsync(Socket listener, CancellationToken cancellation,
+    static async Task WatchWakeRequestsAsync(string wakePath, CancellationToken cancellation,
         Action showExisting)
     {
         while (!cancellation.IsCancellationRequested)
         {
-            Socket connection;
             try
             {
-                connection = await listener.AcceptAsync(cancellation);
+                await Task.Delay(200, cancellation);
             }
-            catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException
-                or SocketException)
+            catch (OperationCanceledException)
             {
                 return;
             }
 
-            using (connection)
+            if (!File.Exists(wakePath)) continue;
+            try
             {
-                try
-                {
-                    var buffer = new byte[1];
-                    await connection.ReceiveAsync(buffer, SocketFlags.None, cancellation);
-                    showExisting();
-                }
-                catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException
-                    or SocketException)
-                {
-                    return;
-                }
+                File.Delete(wakePath);
             }
+            catch (IOException) { continue; }
+            catch (UnauthorizedAccessException) { continue; }
+            showExisting();
         }
     }
 
@@ -158,24 +160,18 @@ public sealed class SingleInstance : IDisposable
             return;
         }
 
-        if (unixSocketPath == null) return;
-        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        for (int attempt = 0; attempt < 20; attempt++)
+        if (unixWakePath == null) return;
+        string temporary = unixWakePath + "." + Guid.NewGuid().ToString("N");
+        try
         {
-            try
-            {
-                socket.Connect(new UnixDomainSocketEndPoint(unixSocketPath));
-                socket.Send(new byte[] { 1 });
-                return;
-            }
-            catch (SocketException) when (attempt < 19)
-            {
-                Thread.Sleep(25);
-            }
-            catch (SocketException)
-            {
-                return;
-            }
+            Directory.CreateDirectory(Path.GetDirectoryName(unixWakePath)!);
+            File.WriteAllText(temporary, "show");
+            File.Move(temporary, unixWakePath, true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            try { File.Delete(temporary); }
+            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException) { }
         }
     }
 
@@ -186,16 +182,19 @@ public sealed class SingleInstance : IDisposable
         windowsRegistration?.Unregister(null);
         windowsWake?.Dispose();
         unixCancellation?.Cancel();
-        unixListener?.Dispose();
-        if (unixAcceptLoop != null)
+        if (unixWakeLoop != null)
         {
-            try { unixAcceptLoop.GetAwaiter().GetResult(); }
+            try { unixWakeLoop.GetAwaiter().GetResult(); }
             catch (OperationCanceledException) { }
         }
         unixCancellation?.Dispose();
-        if (ownsMutex && unixSocketPath != null && File.Exists(unixSocketPath))
-            File.Delete(unixSocketPath);
-        if (ownsMutex) mutex.ReleaseMutex();
-        mutex.Dispose();
+        if (ownsInstance)
+        {
+            if (unixWakePath != null && File.Exists(unixWakePath))
+                File.Delete(unixWakePath);
+            mutex?.ReleaseMutex();
+        }
+        unixLock?.Dispose();
+        mutex?.Dispose();
     }
 }
