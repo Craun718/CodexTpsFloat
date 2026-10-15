@@ -75,6 +75,21 @@ try
     var partial = inc.Refresh(now);
     Check(partial.InvalidLines == 1 && partial.Records.Count == 1, "坏记录不阻断有效记录");
 
+    // A rewrite that keeps the length identical must still be detected; on Unix systems
+    // birth time is unavailable, so identity has to come from the consumed bytes.
+    string replacedRoot = Path.Combine(directory, "replaced");
+    Directory.CreateDirectory(Path.Combine(replacedRoot, "sessions"));
+    string replacedFile = Path.Combine(replacedRoot, "sessions", "same-length.jsonl");
+    File.WriteAllText(replacedFile, row + "\n", new UTF8Encoding(false));
+    var replaced = new UsageScanner(replacedRoot);
+    Check(replaced.Refresh(now).Records.Count == 1, "重写前计入一条");
+    string other = row.Replace("\"response_id\":\"partial\"", "\"response_id\":\"rewrite\"");
+    Check(other.Length == row.Length, "重写样本保持等长");
+    File.WriteAllText(replacedFile, other + "\n", new UTF8Encoding(false));
+    var afterReplace = replaced.Refresh(now);
+    Check(afterReplace.Records.Count == 1 && afterReplace.Records[0].Usage.Id == "rewrite",
+        "等长重写后重建游标并采用新内容");
+
     string streamRoot = Path.Combine(directory, "streaming");
     Directory.CreateDirectory(Path.Combine(streamRoot, "sessions"));
     string streamFile = Path.Combine(streamRoot, "sessions", "unicode.jsonl");
