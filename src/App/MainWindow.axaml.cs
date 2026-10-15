@@ -31,7 +31,7 @@ public partial class MainWindow : Window
     UsageScanner scanner;
     RequestClockReader requestClocks;
     UsageSnapshot? snapshot;
-    bool refreshing, initialized, closing;
+    bool refreshing, initialized, closing, positioned;
     readonly List<string> models = new() { "全部模型" };
 
     public MainWindow() : this(null, null) { }
@@ -151,6 +151,7 @@ public partial class MainWindow : Window
         Position = new PixelPoint(
             (int)Math.Round(Math.Clamp(x, areaLeft, Math.Max(areaLeft, areaRight - Width)) * scale),
             (int)Math.Round(Math.Clamp(y, areaTop, Math.Max(areaTop, areaBottom - Bounds.Height)) * scale));
+        positioned = true;
     }
 
     public void ShowPanel()
@@ -483,7 +484,7 @@ public partial class MainWindow : Window
         if (closing) return;
         closing = true;
         timer.Stop();
-        if (double.IsFinite(Position.X) && double.IsFinite(Position.Y))
+        if (positioned && double.IsFinite(Position.X) && double.IsFinite(Position.Y))
         {
             double scale = Screens.ScreenFromWindow(this)?.Scaling ?? 1;
             settings.X = Position.X / scale;
