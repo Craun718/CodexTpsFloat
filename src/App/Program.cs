@@ -63,4 +63,3 @@ public sealed record CommandLineOptions(string? CapturePath, string? CodexHome, 
         return new(capture, home, snapshot);
     }
 }
-
