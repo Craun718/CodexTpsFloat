@@ -8,7 +8,7 @@ public static class PlatformPaths
 {
     /// <summary>
     /// Windows returns %APPDATA%, macOS returns ~/Library/Application Support and Linux
-    /// returns ~/.config, so this is also the right place to keep user settings.
+    /// returns $XDG_CONFIG_HOME (or ~/.config), so this is also the right place for user settings.
     /// </summary>
     public static string UserConfigDirectory(string appName = "CodexTpsFloat")
     {
@@ -44,6 +44,10 @@ public static class PlatformPaths
 
     static string UserConfigRoot()
     {
+        if (OperatingSystem.IsMacOS())
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "Library", "Application Support");
+
         if (OperatingSystem.IsLinux())
         {
             string? configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");

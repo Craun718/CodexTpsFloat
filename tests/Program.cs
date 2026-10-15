@@ -166,6 +166,19 @@ try
         "同文件出现逐次 token_usage_record 后恢复可计量状态");
 
     string settingsDirectory = Path.Combine(directory, "settings");
+    string expectedConfigRoot = OperatingSystem.IsMacOS()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "Library", "Application Support")
+        : OperatingSystem.IsLinux()
+            ? Path.IsPathRooted(Environment.GetEnvironmentVariable("XDG_CONFIG_HOME"))
+                ? Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")!
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config")
+            : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+    Check(PlatformPaths.UserConfigDirectory() == Path.Combine(expectedConfigRoot, "CodexTpsFloat"),
+        "用户配置目录遵循各平台约定");
+    Check(PlatformPaths.UserAutostartDirectory() == Path.Combine(expectedConfigRoot, "autostart"),
+        "自动启动目录使用平台配置根目录");
+
     var store = new SettingsStore(Path.Combine(settingsDirectory, "settings.json"));
     Check(store.Load().WindowSeconds == 300, "缺失设置文件时回退到默认值");
     var custom = new PanelSettings { CodexHome = directory, WindowSeconds = 999, RefreshSeconds = 42,
