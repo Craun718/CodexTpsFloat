@@ -4,19 +4,21 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.Versioning;
 
 namespace CodexTpsFloat;
 
 /// <summary>
 /// Keeps one panel per user and wakes the running instance on a second launch.
 /// Windows uses named synchronization objects; Unix uses an exclusive lock file
-/// plus an atomically replaced wake request because .NET does not provide named
+/// plus per-request wake files and acknowledgments because .NET does not provide named
 /// event wait handles on those platforms.
 /// </summary>
 public sealed class SingleInstance : IDisposable
 {
     readonly Mutex? mutex;
     readonly EventWaitHandle? windowsWake;
+    EventWaitHandle? windowsAcknowledged;
     readonly RegisteredWaitHandle? windowsRegistration;
     readonly FileStream? unixLock;
     readonly string? unixWakePath;
@@ -53,25 +55,39 @@ public sealed class SingleInstance : IDisposable
         return CreateUnix(name, showExisting, stateDirectory);
     }
 
+    [SupportedOSPlatform("windows")]
     static SingleInstance CreateWindows(string name, Action? showExisting)
     {
         string scopedName = $"Local\\{name}.Panel.v1";
+        // Hold the wake handle before claiming ownership so an early secondary
+        // cannot signal and close the only handle before the owner opens it.
+        var wake = new EventWaitHandle(false, EventResetMode.AutoReset, $"Local\\{name}.Show.v1");
         var mutex = new Mutex(true, scopedName, out bool first);
         try
         {
-            var wake = new EventWaitHandle(false, EventResetMode.AutoReset, $"Local\\{name}.Show.v1");
+            EventWaitHandle? acknowledged = null;
+            if (first) acknowledged = new EventWaitHandle(false, EventResetMode.AutoReset, scopedName + ".Acknowledged");
+            else
+            {
+                for (int attempt = 0; attempt < 20; attempt++)
+                {
+                    if (EventWaitHandle.TryOpenExisting(scopedName + ".Acknowledged", out acknowledged)) break;
+                    Thread.Sleep(10);
+                }
+            }
             RegisteredWaitHandle? registration = null;
             if (first && showExisting != null)
                 registration = ThreadPool.RegisterWaitForSingleObject(wake,
                     (_, _) =>
                     {
-                        try { showExisting(); }
+                        try { showExisting(); acknowledged?.Set(); }
                         catch (Exception error) { Console.Error.WriteLine("显示统计面板失败：" + error.Message); }
                     }, null, Timeout.Infinite, false);
-            return new(first, mutex, wake, registration);
+            return new(first, mutex, wake, registration) { windowsAcknowledged = acknowledged };
         }
         catch
         {
+            wake.Dispose();
             if (first) mutex.ReleaseMutex();
             mutex.Dispose();
             throw;
@@ -107,7 +123,6 @@ public sealed class SingleInstance : IDisposable
             CancellationTokenSource? cancellation = null;
             try
             {
-                if (File.Exists(wakePath)) File.Delete(wakePath);
                 cancellation = new CancellationTokenSource();
                 Task? wakeLoop = showExisting == null
                     ? null
@@ -145,37 +160,64 @@ public sealed class SingleInstance : IDisposable
                 return;
             }
 
-            if (!File.Exists(wakePath)) continue;
             try
             {
-                File.Delete(wakePath);
+                foreach (string request in Directory.EnumerateFiles(Path.GetDirectoryName(wakePath)!,
+                    Path.GetFileName(wakePath) + ".*.request"))
+                {
+                    if (cancellation.IsCancellationRequested) return;
+                    // Expired requests belong to clients that have already reported failure.
+                    if (DateTime.UtcNow - File.GetLastWriteTimeUtc(request) > TimeSpan.FromSeconds(30))
+                    {
+                        File.Delete(request);
+                        continue;
+                    }
+                    showExisting();
+                    File.Move(request, request + ".ack", true);
+                }
             }
-            catch (IOException) { continue; }
-            catch (UnauthorizedAccessException) { continue; }
-            showExisting();
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or TimeoutException)
+            {
+                Console.Error.WriteLine("处理面板显示请求失败：" + error.Message);
+            }
         }
     }
 
-    public void SignalExistingInstance()
+    public void SignalExistingInstance(TimeSpan? acknowledgmentTimeout = null)
     {
         if (OperatingSystem.IsWindows())
         {
+            windowsAcknowledged?.Reset();
             windowsWake?.Set();
+            // Older WPF instances use the same wake event but do not acknowledge it.
+            if (windowsAcknowledged != null && !windowsAcknowledged.WaitOne(acknowledgmentTimeout ?? TimeSpan.FromSeconds(12)))
+                throw new TimeoutException("已有实例未确认显示请求，请稍后重试。");
             return;
         }
 
-        if (unixWakePath == null) return;
-        string temporary = unixWakePath + "." + Guid.NewGuid().ToString("N");
+        if (unixWakePath == null) throw new InvalidOperationException("没有可用的实例通信路径。");
+        string request = unixWakePath + "." + Guid.NewGuid().ToString("N") + ".request";
+        string temporary = request + ".tmp";
+        string acknowledged = request + ".ack";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(unixWakePath)!);
             File.WriteAllText(temporary, "show");
-            File.Move(temporary, unixWakePath, true);
+            File.Move(temporary, request);
+            var timeout = System.Diagnostics.Stopwatch.StartNew();
+            while (timeout.Elapsed < (acknowledgmentTimeout ?? TimeSpan.FromSeconds(12)))
+            {
+                if (File.Exists(acknowledged)) return;
+                Thread.Sleep(50);
+            }
+            throw new TimeoutException("已有实例未确认显示请求，请稍后重试。");
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        finally
         {
-            try { File.Delete(temporary); }
-            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException) { }
+            foreach (string path in new[] { temporary, request, acknowledged })
+            {
+                try { File.Delete(path); }
+                catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException) { }
+            }
         }
     }
 
@@ -185,6 +227,7 @@ public sealed class SingleInstance : IDisposable
         disposed = true;
         windowsRegistration?.Unregister(null);
         windowsWake?.Dispose();
+        windowsAcknowledged?.Dispose();
         unixCancellation?.Cancel();
         if (unixWakeLoop != null)
         {

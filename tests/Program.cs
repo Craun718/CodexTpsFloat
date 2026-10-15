@@ -7,7 +7,11 @@ if (args.Length == 6 && args[0] == "--single-instance-child")
     string instanceName = args[1], stateDirectory = args[2], readyPath = args[3];
     string wakePath = args[4], observedPath = args[5];
     using var instance = SingleInstance.Create(instanceName,
-        () => File.WriteAllText(observedPath, "observed"), stateDirectory);
+        () =>
+        {
+            Thread.Sleep(400); // Simulate UI startup/dispatch before acknowledging.
+            File.WriteAllText(observedPath, "observed");
+        }, stateDirectory);
     if (!instance.IsFirstInstance) return 3;
     File.WriteAllText(readyPath, "ready");
     for (int attempt = 0; attempt < 100; attempt++)
@@ -258,12 +262,42 @@ try
         Check(File.Exists(readyPath) && !child.HasExited, "子进程获得首个单实例所有权");
         using var secondInstance = SingleInstance.Create(instanceName, stateDirectory: instanceDirectory);
         Check(!secondInstance.IsFirstInstance, "第二个进程不会重复启动界面");
+        var handoff = System.Diagnostics.Stopwatch.StartNew();
         secondInstance.SignalExistingInstance();
+        Check(handoff.ElapsedMilliseconds >= 350, "唤醒确认等待界面回调完成");
         for (int attempt = 0; attempt < 100 && !File.Exists(observedPath); attempt++)
             Thread.Sleep(50);
         Check(File.Exists(observedPath), "第二个进程会唤醒已有实例");
         Check(child.WaitForExit(5000), "已有实例收到唤醒后正常退出");
         Check(child.ExitCode == 0, "已有实例退出码正确");
+        bool timedOut = false;
+        try { secondInstance.SignalExistingInstance(TimeSpan.FromMilliseconds(300)); }
+        catch (TimeoutException) { timedOut = true; }
+        Check(timedOut, "实例退出后不再错误报告唤醒成功");
+        Check(!Directory.Exists(instanceDirectory) || !Directory.EnumerateFiles(instanceDirectory, "*.request*").Any(),
+            "唤醒超时清理请求与确认文件");
+        if (!OperatingSystem.IsWindows())
+        {
+            string movedDirectory = instanceDirectory + "-moved";
+            Directory.Move(instanceDirectory, movedDirectory);
+            try
+            {
+                bool writeFailed = false;
+                try { secondInstance.SignalExistingInstance(); }
+                catch (IOException) { writeFailed = true; }
+                Check(writeFailed, "Unix 唤醒写入失败会报告错误");
+            }
+            finally { Directory.Move(movedDirectory, instanceDirectory); }
+
+            string lockPath = Directory.GetFiles(instanceDirectory, "*.lock").Single();
+            File.Delete(lockPath);
+            File.CreateSymbolicLink(lockPath, Path.Combine(instanceDirectory, "missing-parent", "lock"));
+            bool lockFailed = false;
+            try { using var broken = SingleInstance.Create(instanceName, stateDirectory: instanceDirectory); }
+            catch (IOException) { lockFailed = true; }
+            Check(lockFailed, "Unix 非竞争锁错误不会伪装成已有实例");
+            File.Delete(lockPath);
+        }
     }
     finally
     {
