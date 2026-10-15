@@ -284,10 +284,10 @@ public partial class MainWindow : Window
     // macOS three-finger drag and ordinary mouse drag both end up here, so the whole
     // panel is a drag surface except for controls that need the press themselves.
     static bool HasInteractiveAncestor(Visual source) =>
-        source.FindAncestorOfType<Button>() != null
-        || source.FindAncestorOfType<TextBox>() != null
-        || source.FindAncestorOfType<ComboBox>() != null
-        || source.FindAncestorOfType<DataGrid>() != null;
+        source.FindAncestorOfType<Button>(includeSelf: true) != null
+        || source.FindAncestorOfType<TextBox>(includeSelf: true) != null
+        || source.FindAncestorOfType<ComboBox>(includeSelf: true) != null
+        || source.FindAncestorOfType<DataGrid>(includeSelf: true) != null;
 
     async void RefreshClick(object? sender, RoutedEventArgs e) => await RefreshAsync();
 
