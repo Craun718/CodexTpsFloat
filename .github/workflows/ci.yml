@@ -61,7 +61,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Run hidden tray lifecycle tests (Windows only)
+      - name: Run legacy WPF hidden tray lifecycle tests (Windows only)
         if: runner.os == 'Windows'
         run: dotnet run --project tests/TrayLifecycleTests.csproj -c Release --nologo -- --never-show
 

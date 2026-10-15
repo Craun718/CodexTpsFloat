@@ -68,7 +68,7 @@ jobs:
       - name: Run core regression tests
         run: dotnet run --project tests/CoreTests.csproj -c Release --nologo
 
-      - name: Run hidden tray lifecycle tests (Windows only)
+      - name: Run legacy WPF hidden tray lifecycle tests (Windows only)
         if: runner.os == 'Windows'
         run: dotnet run --project tests/TrayLifecycleTests.csproj -c Release --nologo -- --never-show
 

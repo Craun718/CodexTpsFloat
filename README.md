@@ -92,4 +92,4 @@ git tag -a v1.1.4 -m "Release v1.1.4"
 git push origin v1.1.4
 ```
 
-推送标签后，GitHub Actions 会校验标签与项目版本一致，运行核心测试；Windows 额外运行隐藏托盘生命周期测试。发布矩阵构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 便携包，解压后执行快照 smoke test，并生成 SHA-256 校验文件。全部平台成功后，工作流创建公开 Release 并上传所有压缩包与校验文件。打包只包含程序、README、隐私说明和第三方许可证，不包含本机设置、日志或调试符号。
+推送标签后，GitHub Actions 会校验标签与项目版本一致，运行核心测试；Windows 额外运行旧版 WPF 隐藏托盘生命周期回归测试；该测试不覆盖 Avalonia 发布入口的托盘行为，后者仍需在各桌面环境进行手动验收。发布矩阵构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 便携包，解压后执行快照 smoke test，并生成 SHA-256 校验文件。全部平台成功后，工作流创建公开 Release 并上传所有压缩包与校验文件。打包只包含程序、README、隐私说明和第三方许可证，不包含本机设置、日志或调试符号。
