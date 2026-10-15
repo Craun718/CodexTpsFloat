@@ -10,22 +10,22 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        var options = CommandLineOptions.Parse(args);
-        if (options == null) return 2;
-
-        if (options.SnapshotPath != null)
-            return SnapshotWriter.Write(options.SnapshotPath, options.CodexHome);
-
-        using var singleInstance = SingleInstance.Create(
-            "CodexTpsFloat", () => App.ShowExistingPanel?.Invoke());
-        if (!singleInstance.IsFirstInstance && options.CapturePath == null)
-        {
-            singleInstance.SignalExistingInstance();
-            return 0;
-        }
-
         try
         {
+            var options = CommandLineOptions.Parse(args);
+            if (options == null) return 2;
+
+            if (options.SnapshotPath != null)
+                return SnapshotWriter.Write(options.SnapshotPath, options.CodexHome);
+
+            using var singleInstance = SingleInstance.Create(
+                "CodexTpsFloat", () => App.ShowExistingPanel?.Invoke());
+            if (!singleInstance.IsFirstInstance && options.CapturePath == null)
+            {
+                singleInstance.SignalExistingInstance();
+                return 0;
+            }
+
             App.Options = options;
             App.SingleInstance = singleInstance;
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
