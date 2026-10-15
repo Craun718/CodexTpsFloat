@@ -7,6 +7,7 @@ namespace CodexTpsFloat.App;
 
 public static class Program
 {
+    [STAThread]
     public static int Main(string[] args)
     {
         var options = CommandLineOptions.Parse(args);
