@@ -110,6 +110,19 @@ try
     Check(afterReplace.Records.Count == 1 && afterReplace.Records[0].Usage.Id == "rewrite",
         "等长重写后重建游标并采用新内容");
 
+    // Replacing a log can preserve its last 256 bytes while changing earlier usage.
+    string sameSuffix = Event("event_msg", new { type = "noop", text = new string('x', 600) }, 107) + "\n";
+    File.WriteAllText(replacedFile, row + "\n" + sameSuffix, new UTF8Encoding(false));
+    replaced = new UsageScanner(replacedRoot);
+    Check(replaced.Refresh(now).Records.Single().Usage.Id == "partial", "相同尾部替换前读取原始用量");
+    string replacementFile = replacedFile + ".replacement";
+    File.WriteAllText(replacementFile, other + "\n" + sameSuffix, new UTF8Encoding(false));
+    if (OperatingSystem.IsWindows())
+        File.SetCreationTimeUtc(replacementFile, File.GetCreationTimeUtc(replacedFile).AddMinutes(1));
+    File.Move(replacementFile, replacedFile, true);
+    Check(replaced.Refresh(now).Records.Single().Usage.Id == "rewrite",
+        "等长替换保留相同尾部时仍重建旧用量");
+
     string streamRoot = Path.Combine(directory, "streaming");
     Directory.CreateDirectory(Path.Combine(streamRoot, "sessions"));
     string streamFile = Path.Combine(streamRoot, "sessions", "unicode.jsonl");

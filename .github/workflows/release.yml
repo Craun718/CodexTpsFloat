@@ -33,6 +33,9 @@ jobs:
       - name: Run core regression tests
         run: dotnet run --project tests/CoreTests.csproj -c Release --nologo
 
+      - name: Run Avalonia regression tests
+        run: dotnet run --project tests/AppTests.csproj -c Release --nologo
+
   release:
     needs: validate
     strategy:

@@ -438,11 +438,15 @@ public partial class MainWindow : Window
         string? selectedPattern = result.SelectedFileType?.Patterns?.FirstOrDefault();
         bool json = string.Equals(selectedPattern, "*.json", StringComparison.OrdinalIgnoreCase)
             || (selectedPattern == null && Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase));
-        path = Path.ChangeExtension(path, json ? ".json" : ".md");
+        string targetPath = Path.ChangeExtension(path, json ? ".json" : ".md");
         try
         {
+            // The native picker confirmed only its returned path, before we changed the extension.
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            if (!string.Equals(path, targetPath, comparison) && File.Exists(targetPath)
+                && !await ShowMessage($"文件已存在：\n{targetPath}\n\n是否覆盖？", confirm: true)) return;
             var hours = UsageScanner.Hours(snapshot, date, ModelFilter);
-            ReportExporter.Write(path, snapshot, date, ModelFilter, hours);
+            ReportExporter.Write(targetPath, snapshot, date, ModelFilter, hours);
             _ = ShowMessage("报告已保存。");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -451,8 +455,15 @@ public partial class MainWindow : Window
         }
     }
 
-    async Task ShowMessage(string message)
+    async Task<bool> ShowMessage(string message, bool confirm = false)
     {
+        var accept = new Button { Content = confirm ? "覆盖" : "确定", IsDefault = !confirm };
+        var actions = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            Spacing = 8
+        };
         var dialog = new Window
         {
             Title = "Codex TPS",
@@ -467,13 +478,19 @@ public partial class MainWindow : Window
                 Children =
                 {
                     new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
-                    new Button { Content = "确定", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right }
+                    actions
                 }
             }
         };
-        if (dialog.Content is StackPanel panel && panel.Children[1] is Button button)
-            button.Click += (_, _) => dialog.Close();
-        await dialog.ShowDialog(this);
+        if (confirm)
+        {
+            var cancel = new Button { Content = "取消", IsDefault = true, IsCancel = true };
+            cancel.Click += (_, _) => dialog.Close(false);
+            actions.Children.Add(cancel);
+        }
+        accept.Click += (_, _) => dialog.Close(true);
+        actions.Children.Add(accept);
+        return await dialog.ShowDialog<bool>(this);
     }
 
     void Capture(string path)

@@ -38,6 +38,8 @@ public sealed class UsageScanner
     {
         public const int TailCapacity = 256;
         public long Offset;
+        public long Creation;
+        public long LastLength;
         public byte[]? Tail;
         public int TailLength;
         public string Thread = "";
@@ -234,6 +236,8 @@ public sealed class UsageScanner
                 if (!cursors.TryGetValue(path, out var cursor)) cursors[path] = cursor = new();
                 using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete);
+                long length = stream.Length;
+                long creation = File.GetCreationTimeUtc(stream.SafeFileHandle).Ticks;
                 if (cursor.Offset == 0 && stream.Length >= 3)
                 {
                     if (stream.ReadByte() == 0xEF && stream.ReadByte() == 0xBB && stream.ReadByte() == 0xBF)
@@ -245,12 +249,18 @@ public sealed class UsageScanner
                 }
                 // Only a cursor that already consumed bytes can be invalidated; an empty
                 // cursor must always fall through to reading so a lone partial line works.
-                if (cursor.Offset > 0 && (stream.Length < cursor.Offset || !TailMatches(stream, cursor)))
+                // Unix can fall back to ctime for creation time, so a changed timestamp
+                // there only invalidates a same-size file, not an ordinary append.
+                bool replaced = cursor.Creation != 0 && cursor.Creation != creation
+                    && (OperatingSystem.IsWindows() || length == cursor.LastLength);
+                if (cursor.Offset > 0 && (length < cursor.Offset || replaced || !TailMatches(stream, cursor)))
                 {
                     // Rebuild after replacement/truncation; stale usage must not survive a reset.
                     cursors.Clear(); usage.Clear(); turns.Clear(); invalidLines = 0;
                     return Refresh(now);
                 }
+                cursor.Creation = creation;
+                cursor.LastLength = length;
                 if (stream.Length == cursor.Offset) continue;
                 stream.Seek(cursor.Offset, SeekOrigin.Begin);
                 ReadCompleteLines(stream, cursor);
