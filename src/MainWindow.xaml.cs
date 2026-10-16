@@ -4,8 +4,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,23 +16,14 @@ using Forms = System.Windows.Forms;
 
 namespace CodexTpsFloat;
 
-public sealed class PanelSettings
-{
-    public string CodexHome { get; set; } = Environment.GetEnvironmentVariable("CODEX_HOME")
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
-    public int WindowSeconds { get; set; } = 300;
-    public int RefreshSeconds { get; set; } = 15;
-    public bool Pinned { get; set; } = true;
-    public double? X { get; set; }
-    public double? Y { get; set; }
-}
-
 public partial class MainWindow : Window
 {
-    const string StartupName = "CodexTpsFloat";
     readonly DispatcherTimer timer = new();
     readonly Forms.NotifyIcon tray;
-    readonly string settingsPath = Path.Combine(AppContext.BaseDirectory, "data", "settings.json");
+    readonly IAutostartService autostart = Autostart.Create();
+    readonly SettingsStore settingsStore = OperatingSystem.IsWindows()
+        ? SettingsStore.ForPortableApp(AppContext.BaseDirectory)
+        : SettingsStore.ForUserProfile();
     readonly string? capturePath;
     PanelSettings settings;
     UsageScanner scanner;
@@ -44,11 +33,9 @@ public partial class MainWindow : Window
     public MainWindow(string? capturePath = null, string? codexHome = null)
     {
         this.capturePath = capturePath;
-        try { settings = JsonSerializer.Deserialize<PanelSettings>(File.ReadAllText(settingsPath)) ?? new(); }
-        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { settings = new(); }
+        settings = settingsStore.Load();
         if (codexHome != null) settings.CodexHome = Path.GetFullPath(codexHome);
-        if (!new[] { 60, 300, 1800, 3600 }.Contains(settings.WindowSeconds)) settings.WindowSeconds = 300;
-        if (!new[] { 5, 15, 30, 60 }.Contains(settings.RefreshSeconds)) settings.RefreshSeconds = 15;
+        settings.Normalize();
         scanner = new(settings.CodexHome);
         requestClocks = new(settings.CodexHome);
         InitializeComponent();
@@ -57,9 +44,12 @@ public partial class MainWindow : Window
         TopmostBox.IsChecked = settings.Pinned;
         PinButton.Foreground = new SolidColorBrush(settings.Pinned ? Color.FromRgb(0, 122, 255) : Colors.Gray);
         DateBox.SelectedDate = BeijingNow.Date;
-        StartupBox.IsChecked = StartupEnabled();
+        StartupBox.IsChecked = autostart.IsEnabled();
+        // Assign the selection instead of toggling IsSelected on every item: clearing a later
+        // item's IsSelected would also clear the selection just set on an earlier one.
         foreach (var item in CadenceBox.Items.OfType<ComboBoxItem>())
-            item.IsSelected = item.Tag?.ToString() == settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture);
+            if (item.Tag?.ToString() == settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture))
+                CadenceBox.SelectedItem = item;
         foreach (var radio in new[] { MinuteWindow, FiveMinuteWindow, HalfHourWindow, HourWindow })
             if (radio.Tag?.ToString() == settings.WindowSeconds.ToString(CultureInfo.InvariantCulture)) radio.IsChecked = true;
         timer.Interval = TimeSpan.FromSeconds(settings.RefreshSeconds);
@@ -183,15 +173,8 @@ public partial class MainWindow : Window
     }
     void SaveSettings()
     {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-            string temporary = settingsPath + ".tmp";
-            File.WriteAllText(temporary, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }), Encoding.UTF8);
-            File.Move(temporary, settingsPath, true);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        { if (!closing) StatusText.ToolTip = "设置保存失败：" + e.Message; }
+        string? error = settingsStore.Save(settings);
+        if (error != null && !closing) StatusText.ToolTip = "设置保存失败：" + error;
     }
     void DragHeader(object sender, MouseButtonEventArgs e)
     {
@@ -260,21 +243,12 @@ public partial class MainWindow : Window
         settings.CodexHome = dialog.SelectedPath; HomeBox.Text = settings.CodexHome;
         scanner = new(settings.CodexHome); requestClocks = new(settings.CodexHome); SaveSettings(); await RefreshAsync();
     }
-    static bool StartupEnabled()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        return key?.GetValue(StartupName) is string value && value == $"\"{Environment.ProcessPath}\"";
-    }
     void StartupClick(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-            if (StartupBox.IsChecked == true) key.SetValue(StartupName, $"\"{Environment.ProcessPath}\"");
-            else key.DeleteValue(StartupName, false);
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException)
-        { StartupBox.IsChecked = StartupEnabled(); MessageBox.Show(this, "登录启动设置失败：" + ex.Message, "Codex TPS"); }
+        string? error = autostart.SetEnabled(StartupBox.IsChecked == true);
+        if (error == null) return;
+        StartupBox.IsChecked = autostart.IsEnabled();
+        MessageBox.Show(this, "登录启动设置失败：" + error, "Codex TPS");
     }
     void ExportClick(object sender, RoutedEventArgs e)
     {
@@ -285,16 +259,7 @@ public partial class MainWindow : Window
         try
         {
             var hours = UsageScanner.Hours(snapshot, date, ModelFilter);
-            if (Path.GetExtension(dialog.FileName).Equals(".json", StringComparison.OrdinalIgnoreCase))
-                File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(new { date = date.ToString("yyyy-MM-dd"), timezone = "UTC+8", snapshot.GeneratedAt,
-                    model = ModelFilter ?? "全部模型", method = "输出词元（含推理）除以输出项计时区间；非精确解码速度", hours }, new JsonSerializerOptions { WriteIndented = true }), Encoding.UTF8);
-            else
-            {
-                var text = new StringBuilder($"# Codex TPS 分时统计\n\n日期：{date:yyyy-MM-dd}；北京时间 UTC+8；模型：{ModelFilter ?? "全部模型"}。\n\n快照：{snapshot.GeneratedAt:yyyy-MM-dd HH:mm:ss zzz}。\n\n| 时段 | 样本 | 中位数 | 加权 TPS |\n|---|---:|---:|---:|\n");
-                foreach (var h in hours) text.AppendLine($"| {h.Hour} | {h.Samples} | {h.Median?.ToString("F2", CultureInfo.InvariantCulture) ?? "—"} | {h.Weighted?.ToString("F2", CultureInfo.InvariantCulture) ?? "—"} |");
-                text.AppendLine("\nTPS 是流式阶段估算：输出词元（包含推理）÷（逐次用量记录时间 − 首个模型输出项开始时间）。输入和缓存输入不计入，不等于精确服务端解码速度。\n\n按首个输出项的北京时间小时分组；零持续时间或缺失计时不作为有效样本。并发响应耗时各自相加。不同任务和上下文不可直接用于认定时段性能差异。\n");
-                File.WriteAllText(dialog.FileName, text.ToString(), Encoding.UTF8);
-            }
+            ReportExporter.Write(dialog.FileName, snapshot, date, ModelFilter, hours);
             MessageBox.Show(this, "报告已保存。", "Codex TPS");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { MessageBox.Show(this, "导出失败：" + ex.Message, "Codex TPS"); }

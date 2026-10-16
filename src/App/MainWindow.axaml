@@ -1,0 +1,283 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:core="using:CodexTpsFloat"
+        x:Class="CodexTpsFloat.App.MainWindow"
+        Title="Codex TPS 悬浮窗"
+        Width="432"
+        SizeToContent="Height"
+        CanResize="False"
+        SystemDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        PointerPressed="DragPanel"
+        FontFamily="{DynamicResource InterFont}"
+        FontSize="12"
+        Foreground="#262629">
+  <Window.Resources>
+    <ControlTheme x:Key="WindowSegment" TargetType="RadioButton">
+      <Setter Property="GroupName" Value="Window"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Foreground" Value="#75757D"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="Padding" Value="0,7"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="SegmentBackground" Background="{TemplateBinding Background}"
+                  BorderBrush="Transparent" BorderThickness="1"
+                  CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Background="Transparent"
+                              Foreground="{TemplateBinding Foreground}"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="Center"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover">
+        <Setter Property="Background" Value="#E4E4E9"/>
+      </Style>
+      <Style Selector="^:checked">
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="Foreground" Value="#262629"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+      </Style>
+      <Style Selector="^:focus-visible /template/ Border#SegmentBackground">
+        <Setter Property="BorderBrush" Value="#85858D"/>
+      </Style>
+    </ControlTheme>
+  </Window.Resources>
+  <Window.Styles>
+    <Style Selector="Button">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="#75757D"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="8,5"/>
+      <Setter Property="CornerRadius" Value="6"/>
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#F0F0F3"/>
+    </Style>
+    <Style Selector="Button:disabled">
+      <Setter Property="Opacity" Value="0.45"/>
+    </Style>
+    <Style Selector="RadioButton.segment">
+      <Setter Property="Theme" Value="{StaticResource WindowSegment}"/>
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="#85858D"/>
+      <Setter Property="FontSize" Value="11"/>
+    </Style>
+    <Style Selector="CheckBox.switch">
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+  </Window.Styles>
+
+  <Border Margin="16" CornerRadius="18" Background="White" BorderBrush="#DFDFE4" BorderThickness="1">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="22" OffsetX="0" OffsetY="5" Opacity="0.2"/>
+    </Border.Effect>
+    <StackPanel>
+      <Grid Margin="16,13,12,12" Background="Transparent">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="36"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border Width="30" Height="30" CornerRadius="8" Background="#F3F5F8" VerticalAlignment="Center">
+          <TextBlock Text="&lt;/&gt;" FontFamily="Menlo,Consolas,monospace" FontWeight="Bold" FontSize="16"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#007AFF"/>
+        </Border>
+        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+          <TextBlock Text="Codex TPS" FontWeight="SemiBold" FontSize="15"/>
+          <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+            <Ellipse x:Name="StatusDot" Width="6" Height="6" Fill="#34C759" Margin="0,0,6,0"/>
+            <TextBlock x:Name="StatusText" Text="读取中" Classes="muted"/>
+          </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="RefreshButton" Width="30" Height="30" Padding="0" Click="RefreshClick" ToolTip.Tip="立即刷新">
+            <Path Width="16" Height="16" Stretch="Uniform"
+                  Stroke="{Binding $parent[Button].Foreground}"
+                  StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round"
+                  Data="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16 M16 16h5v5"/>
+          </Button>
+          <Button Width="30" Height="30" Padding="0" Click="FolderClick" ToolTip.Tip="打开会话目录">
+            <Path Width="16" Height="16" Stretch="Uniform"
+                  Stroke="{Binding $parent[Button].Foreground}"
+                  StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round"
+                  Data="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+          </Button>
+          <Button x:Name="PinButton" Width="30" Height="30" Padding="0" Click="PinClick" ToolTip.Tip="切换置顶"
+                  Foreground="#007AFF">
+            <Path Width="16" Height="16" Stretch="Uniform"
+                  Stroke="{Binding $parent[Button].Foreground}"
+                  StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round"
+                  Data="M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+          </Button>
+          <Button x:Name="HideButton" Width="30" Height="30" Padding="0" Click="HideClick" ToolTip.Tip="收起到托盘">
+            <Path Width="16" Height="16" Stretch="Uniform"
+                  Stroke="{Binding $parent[Button].Foreground}"
+                  StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round"
+                  Data="M6 9l6 6 6-6"/>
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <Border Height="1" Background="#E7E7EB"/>
+
+      <StackPanel Margin="18,16,18,14">
+        <Border Background="#EEEEF1" CornerRadius="7" Padding="3">
+          <UniformGrid Columns="4">
+            <RadioButton x:Name="MinuteWindow" Classes="segment" Content="1 分钟" Tag="60"/>
+            <RadioButton x:Name="FiveMinuteWindow" Classes="segment" Content="5 分钟" Tag="300" IsChecked="True"/>
+            <RadioButton x:Name="HalfHourWindow" Classes="segment" Content="30 分钟" Tag="1800"/>
+            <RadioButton x:Name="HourWindow" Classes="segment" Content="1 小时" Tag="3600"/>
+          </UniformGrid>
+        </Border>
+
+        <Grid Margin="0,13,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Text="输出生成速度 · 估算" Classes="muted"
+                     ToolTip.Tip="本窗口内完成响应的输出词元总数 ÷ 流式阶段耗时总和。包含推理词元；基于输出项计时，非精确逐词元解码速度。"/>
+          <ComboBox x:Name="ModelBox" Grid.Column="1" Width="140" Height="23" FontSize="10"
+                    SelectionChanged="ModelChanged" ToolTip.Tip="按模型筛选"/>
+        </Grid>
+
+        <Grid Margin="0,5,0,13">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+            <TextBlock x:Name="HeroValue" Text="—" FontSize="38" FontWeight="SemiBold"/>
+            <TextBlock Text="词元/秒" Classes="muted" VerticalAlignment="Bottom" Margin="7,0,0,8"/>
+          </StackPanel>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock x:Name="RequestValue" Text="0.0" HorizontalAlignment="Right" FontSize="17" FontWeight="SemiBold"/>
+            <TextBlock Text="请求/分钟" Classes="muted" Margin="0,3,0,0"/>
+          </StackPanel>
+        </Grid>
+
+        <UniformGrid Columns="4">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Fill="#007AFF" Width="6" Height="6" Margin="0,0,5,0"/>
+              <TextBlock Text="输入" Classes="muted"/>
+            </StackPanel>
+            <TextBlock x:Name="InputValue" Text="0" FontWeight="SemiBold" FontSize="16" Margin="0,5,0,2"/>
+            <TextBlock Text="词元/秒" Classes="muted"/>
+          </StackPanel>
+          <StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Fill="#00BCCF" Width="6" Height="6" Margin="0,0,5,0"/>
+              <TextBlock Text="缓存" Classes="muted"/>
+            </StackPanel>
+            <TextBlock x:Name="CachedValue" Text="0" FontWeight="SemiBold" FontSize="16" Margin="0,5,0,2"/>
+            <TextBlock Text="词元/秒" Classes="muted"/>
+          </StackPanel>
+          <StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Fill="#FF9500" Width="6" Height="6" Margin="0,0,5,0"/>
+              <TextBlock Text="输出" Classes="muted"/>
+            </StackPanel>
+            <TextBlock x:Name="OutputValue" Text="0" FontWeight="SemiBold" FontSize="16" Margin="0,5,0,2"/>
+            <TextBlock Text="词元/秒" Classes="muted"/>
+          </StackPanel>
+          <StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Fill="#BF40D1" Width="6" Height="6" Margin="0,0,5,0"/>
+              <TextBlock Text="推理" Classes="muted"/>
+            </StackPanel>
+            <TextBlock x:Name="ReasoningValue" Text="0" FontWeight="SemiBold" FontSize="16" Margin="0,5,0,2"/>
+            <TextBlock Text="词元/秒" Classes="muted"/>
+          </StackPanel>
+        </UniformGrid>
+
+        <TextBlock Text="上方四色数值为窗口完成量 ÷ 窗口秒数" FontSize="10" Foreground="#A4A4AB" Margin="0,9,0,0"/>
+        <Grid Margin="0,11,0,0">
+          <TextBlock x:Name="SessionsValue" Text="0 个活跃会话" Classes="muted"/>
+          <TextBlock x:Name="CacheRatioValue" Text="缓存占比 0%" Classes="muted" HorizontalAlignment="Right"/>
+        </Grid>
+        <Grid Margin="0,8,0,0">
+          <TextBlock x:Name="SamplesValue" Text="计时样本 0" Classes="muted"/>
+          <TextBlock x:Name="TtftValue" Text="轮次首字 —" Classes="muted" HorizontalAlignment="Right"
+                     ToolTip.Tip="已结束轮次的日志 time_to_first_token_ms 中位数，不是每次内部模型请求的 TTFT。"/>
+        </Grid>
+      </StackPanel>
+
+      <Border Height="1" Background="#E7E7EB"/>
+      <Grid Margin="10,4">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Button x:Name="HistoryButton" Content="今日分时  ›" Click="HistoryClick" HorizontalAlignment="Left" Foreground="#55555D"/>
+        <Button Grid.Column="1" Content="设置" Click="SettingsClick"/>
+      </Grid>
+
+      <StackPanel x:Name="HistoryPanel" IsVisible="False" Margin="18,0,18,12">
+        <Grid Margin="0,0,0,8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <DatePicker x:Name="DateBox" SelectedDateChanged="DateChanged" Width="138" HorizontalAlignment="Left"/>
+          <Button Grid.Column="1" Content="导出报告" Click="ExportClick" Foreground="#007AFF"/>
+        </Grid>
+        <DataGrid x:Name="HourGrid" x:DataType="core:HourStats" Height="216" IsReadOnly="True" AutoGenerateColumns="False"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                  HorizontalGridLinesBrush="#EEEEF2" BorderThickness="0" RowHeight="26" FontSize="11"
+                  Background="White">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="北京时间" Binding="{CompiledBinding Hour}" Width="*"/>
+            <DataGridTextColumn Header="样本" Binding="{CompiledBinding Samples}" Width="45"/>
+            <DataGridTextColumn Header="中位数" Binding="{CompiledBinding Median, StringFormat=F1, TargetNullValue=—}" Width="59"/>
+            <DataGridTextColumn Header="加权 TPS" Binding="{CompiledBinding Weighted, StringFormat=F1, TargetNullValue=—}" Width="66"/>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Text="无样本显示 —；按首个输出项小时分组" Classes="muted" Margin="0,6,0,0"/>
+      </StackPanel>
+
+      <StackPanel x:Name="SettingsPanel" IsVisible="False" Margin="18,0,18,12">
+        <TextBlock Text="Codex 数据目录" Classes="muted" Margin="0,0,0,5"/>
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="选择" Click="ChooseHomeClick" Foreground="#007AFF"/>
+          <TextBox x:Name="HomeBox" IsReadOnly="True" VerticalContentAlignment="Center" FontSize="10"/>
+        </DockPanel>
+        <CheckBox x:Name="TopmostBox" Content="始终置顶" IsChecked="True" Margin="0,10,0,0" Click="TopmostClick"/>
+        <CheckBox x:Name="StartupBox" Classes="switch" Content="登录启动" Margin="0,6,0,0" Click="StartupClick"/>
+        <TextBlock Text="只读本机日志，数据不发送到网络。" Classes="muted" Margin="0,10,0,0"/>
+      </StackPanel>
+
+      <Border Height="1" Background="#E7E7EB"/>
+      <Grid Margin="18,12,14,14">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="自动刷新" VerticalAlignment="Center" Margin="0,0,9,0"/>
+        <ComboBox x:Name="CadenceBox" Grid.Column="1" Width="83" SelectionChanged="CadenceChanged">
+          <ComboBoxItem Content="5 秒" Tag="5"/>
+          <ComboBoxItem Content="15 秒" Tag="15" IsSelected="True"/>
+          <ComboBoxItem Content="30 秒" Tag="30"/>
+          <ComboBoxItem Content="1 分钟" Tag="60"/>
+        </ComboBox>
+        <Button Grid.Column="3" Content="⏻" FontSize="20" Click="ExitClick" ToolTip.Tip="退出" Padding="4,0"/>
+      </Grid>
+    </StackPanel>
+  </Border>
+</Window>

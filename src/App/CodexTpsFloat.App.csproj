@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>CodexTpsFloat</AssemblyName>
+    <RootNamespace>CodexTpsFloat.App</RootNamespace>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <EnableWindowsTargeting Condition="'$(OS)' != 'Windows_NT'">true</EnableWindowsTargeting>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12"/>
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12" Condition="'$(Configuration)' == 'Debug'"/>
+    <!-- Pin the patched version of Avalonia.FreeDesktop's transitive dependency. -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3"/>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Core/CodexTpsFloat.Core.csproj"/>
+  </ItemGroup>
+</Project>

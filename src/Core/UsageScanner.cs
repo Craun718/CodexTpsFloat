@@ -36,14 +36,50 @@ public sealed class UsageScanner
 {
     sealed class Cursor
     {
+        public const int TailCapacity = 256;
         public long Offset;
         public long Creation;
+        public long LastLength;
+        public byte[]? Prefix;
+        public int PrefixLength;
+        public byte[]? Tail;
+        public int TailLength;
         public string Thread = "";
         public string Turn = "";
         public bool HasUsage;
         public bool HasLegacyUsage;
+
+        // Keep a sliding window of the most recently consumed bytes so a replaced or
+        // rewritten file can be detected without relying on birth time, which Unix
+        // filesystems often do not expose (and ctime changes on every append there).
+        public void RememberBytes(ReadOnlySpan<byte> data)
+        {
+            if (PrefixLength < TailCapacity)
+            {
+                Prefix ??= new byte[TailCapacity];
+                int take = Math.Min(data.Length, TailCapacity - PrefixLength);
+                data[..take].CopyTo(Prefix.AsSpan(PrefixLength));
+                PrefixLength += take;
+            }
+            Tail ??= new byte[TailCapacity];
+            if (data.Length >= TailCapacity)
+            {
+                data[^TailCapacity..].CopyTo(Tail);
+                TailLength = TailCapacity;
+                return;
+            }
+            int keep = Math.Min(TailLength, TailCapacity - data.Length);
+            int drop = TailLength - keep;
+            if (drop > 0) Tail.AsSpan(drop, keep).CopyTo(Tail);
+            data.CopyTo(Tail.AsSpan(keep));
+            TailLength = keep + data.Length;
+        }
     }
-    readonly Dictionary<string, Cursor> cursors = new(StringComparer.OrdinalIgnoreCase);
+    // Windows paths are case-insensitive; Unix paths are not, so two logs that differ only
+    // by case must keep separate cursors there.
+    static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    readonly Dictionary<string, Cursor> cursors = new(PathComparer);
     readonly Dictionary<string, UsageRecord> usage = new();
     readonly Dictionary<string, TurnData> turns = new();
     readonly string home;
@@ -155,6 +191,7 @@ public sealed class UsageScanner
                         catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException)
                         { invalidLines++; }
                     }
+                    cursor.RememberBytes(buffer.AsSpan(consumed, newline + 1));
                     consumed += newline + 1;
                     cursor.Offset += newline + 1; // Byte offsets also cover CRLF and multibyte UTF-8.
                 }
@@ -172,6 +209,25 @@ public sealed class UsageScanner
         }
         finally { ArrayPool<byte>.Shared.Return(buffer, clearArray: true); }
     }
+    static bool BytesMatch(FileStream stream, long offset, ReadOnlySpan<byte> expected)
+    {
+        stream.Seek(offset, SeekOrigin.Begin);
+        Span<byte> probe = stackalloc byte[Cursor.TailCapacity];
+        int read = 0;
+        while (read < expected.Length)
+        {
+            int count = stream.Read(probe[read..expected.Length]);
+            if (count <= 0) return false;
+            read += count;
+        }
+        return probe[..expected.Length].SequenceEqual(expected);
+    }
+    // A replacement can retain its suffix and filesystem timestamp. Check the first
+    // consumed bytes too, without rereading the entire log on every refresh.
+    static bool ContentMatches(FileStream stream, Cursor cursor) =>
+        cursor.Prefix != null && cursor.Tail != null && stream.Length >= cursor.Offset
+        && BytesMatch(stream, 0, cursor.Prefix.AsSpan(0, cursor.PrefixLength))
+        && BytesMatch(stream, cursor.Offset - cursor.TailLength, cursor.Tail.AsSpan(0, cursor.TailLength));
     public UsageSnapshot Refresh(DateTimeOffset now)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -187,24 +243,35 @@ public sealed class UsageScanner
         {
             try
             {
-                var info = new FileInfo(path);
                 if (!cursors.TryGetValue(path, out var cursor)) cursors[path] = cursor = new();
-                long creation = info.CreationTimeUtc.Ticks;
-                if (info.Length < cursor.Offset || (cursor.Creation != 0 && cursor.Creation != creation))
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                long length = stream.Length;
+                long creation = File.GetCreationTimeUtc(stream.SafeFileHandle).Ticks;
+                if (cursor.Offset == 0 && stream.Length >= 3)
+                {
+                    if (stream.ReadByte() == 0xEF && stream.ReadByte() == 0xBB && stream.ReadByte() == 0xBF)
+                    {
+                        cursor.Offset = 3;
+                        ReadOnlySpan<byte> bom = [0xEF, 0xBB, 0xBF];
+                        cursor.RememberBytes(bom);
+                    }
+                }
+                // Only a cursor that already consumed bytes can be invalidated; an empty
+                // cursor must always fall through to reading so a lone partial line works.
+                // Unix can fall back to ctime for creation time, so a changed timestamp
+                // there only invalidates a same-size file, not an ordinary append.
+                bool replaced = cursor.Creation != 0 && cursor.Creation != creation
+                    && (OperatingSystem.IsWindows() || length == cursor.LastLength);
+                if (cursor.Offset > 0 && (length < cursor.Offset || replaced || !ContentMatches(stream, cursor)))
                 {
                     // Rebuild after replacement/truncation; stale usage must not survive a reset.
                     cursors.Clear(); usage.Clear(); turns.Clear(); invalidLines = 0;
                     return Refresh(now);
                 }
                 cursor.Creation = creation;
-                if (info.Length == cursor.Offset) continue;
-                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete);
-                if (cursor.Offset == 0 && stream.Length >= 3)
-                {
-                    if (stream.ReadByte() == 0xEF && stream.ReadByte() == 0xBB && stream.ReadByte() == 0xBF)
-                        cursor.Offset = 3;
-                }
+                cursor.LastLength = length;
+                if (stream.Length == cursor.Offset) continue;
                 stream.Seek(cursor.Offset, SeekOrigin.Begin);
                 ReadCompleteLines(stream, cursor);
             }

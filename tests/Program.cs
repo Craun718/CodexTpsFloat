@@ -2,6 +2,26 @@ using System.Text;
 using System.Text.Json;
 using CodexTpsFloat;
 
+if (args.Length == 6 && args[0] == "--single-instance-child")
+{
+    string instanceName = args[1], stateDirectory = args[2], readyPath = args[3];
+    string wakePath = args[4], observedPath = args[5];
+    using var instance = SingleInstance.Create(instanceName,
+        () =>
+        {
+            Thread.Sleep(400); // Simulate UI startup/dispatch before acknowledging.
+            File.WriteAllText(observedPath, "observed");
+        }, stateDirectory);
+    if (!instance.IsFirstInstance) return 3;
+    File.WriteAllText(readyPath, "ready");
+    for (int attempt = 0; attempt < 100; attempt++)
+    {
+        if (File.Exists(observedPath)) return 0;
+        Thread.Sleep(50);
+    }
+    return 4;
+}
+
 static string Event(string type, object payload, double second) => JsonSerializer.Serialize(new
 {
     type, timestamp = DateTimeOffset.FromUnixTimeMilliseconds((long)(second * 1000)).ToString("O"), payload
@@ -75,6 +95,46 @@ try
     var partial = inc.Refresh(now);
     Check(partial.InvalidLines == 1 && partial.Records.Count == 1, "坏记录不阻断有效记录");
 
+    // A rewrite that keeps the length identical must still be detected; on Unix systems
+    // birth time is unavailable, so identity has to come from the consumed bytes.
+    string replacedRoot = Path.Combine(directory, "replaced");
+    Directory.CreateDirectory(Path.Combine(replacedRoot, "sessions"));
+    string replacedFile = Path.Combine(replacedRoot, "sessions", "same-length.jsonl");
+    File.WriteAllText(replacedFile, row + "\n", new UTF8Encoding(false));
+    var replaced = new UsageScanner(replacedRoot);
+    Check(replaced.Refresh(now).Records.Count == 1, "重写前计入一条");
+    string other = row.Replace("\"response_id\":\"partial\"", "\"response_id\":\"rewrite\"");
+    Check(other.Length == row.Length, "重写样本保持等长");
+    File.WriteAllText(replacedFile, other + "\n", new UTF8Encoding(false));
+    var afterReplace = replaced.Refresh(now);
+    Check(afterReplace.Records.Count == 1 && afterReplace.Records[0].Usage.Id == "rewrite",
+        "等长重写后重建游标并采用新内容");
+
+    // Replacing a log can preserve its last 256 bytes while changing earlier usage.
+    string sameSuffix = Event("event_msg", new { type = "noop", text = new string('x', 600) }, 107) + "\n";
+    File.WriteAllText(replacedFile, row + "\n" + sameSuffix, new UTF8Encoding(false));
+    replaced = new UsageScanner(replacedRoot);
+    Check(replaced.Refresh(now).Records.Single().Usage.Id == "partial", "相同尾部替换前读取原始用量");
+    string replacementFile = replacedFile + ".replacement";
+    File.WriteAllText(replacementFile, other + "\n" + sameSuffix, new UTF8Encoding(false));
+    if (OperatingSystem.IsWindows())
+        File.SetCreationTimeUtc(replacementFile, File.GetCreationTimeUtc(replacedFile).AddMinutes(1));
+    File.Move(replacementFile, replacedFile, true);
+    Check(replaced.Refresh(now).Records.Single().Usage.Id == "rewrite",
+        "等长替换保留相同尾部时仍重建旧用量");
+
+    // Coarse timestamps can collide on a quick replacement; verify the content fallback.
+    File.WriteAllText(replacedFile, row + "\n" + sameSuffix, new UTF8Encoding(false));
+    replaced = new UsageScanner(replacedRoot);
+    Check(replaced.Refresh(now).Records.Single().Usage.Id == "partial", "时间戳碰撞前读取原始用量");
+    File.WriteAllText(replacementFile, other + "\n" + sameSuffix, new UTF8Encoding(false));
+    File.SetLastWriteTimeUtc(replacementFile, File.GetLastWriteTimeUtc(replacedFile));
+    if (OperatingSystem.IsWindows())
+        File.SetCreationTimeUtc(replacementFile, File.GetCreationTimeUtc(replacedFile));
+    File.Move(replacementFile, replacedFile, true);
+    Check(replaced.Refresh(now).Records.Single().Usage.Id == "rewrite",
+        "时间戳相同且尾部相同时仍检查文件头");
+
     string streamRoot = Path.Combine(directory, "streaming");
     Directory.CreateDirectory(Path.Combine(streamRoot, "sessions"));
     string streamFile = Path.Combine(streamRoot, "sessions", "unicode.jsonl");
@@ -133,6 +193,154 @@ try
     var modern = legacy.Refresh(now);
     Check(modern.UnsupportedFiles == 1 && modern.Records.Count == 1 && modern.InvalidLines == 0,
         "同文件出现逐次 token_usage_record 后恢复可计量状态");
+
+    string settingsDirectory = Path.Combine(directory, "settings");
+    string expectedConfigRoot = OperatingSystem.IsMacOS()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "Library", "Application Support")
+        : OperatingSystem.IsLinux()
+            ? Path.IsPathRooted(Environment.GetEnvironmentVariable("XDG_CONFIG_HOME"))
+                ? Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")!
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config")
+            : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+    Check(PlatformPaths.UserConfigDirectory() == Path.Combine(expectedConfigRoot, "CodexTpsFloat"),
+        "用户配置目录遵循各平台约定");
+    Check(PlatformPaths.UserAutostartDirectory() == Path.Combine(expectedConfigRoot, "autostart"),
+        "自动启动目录使用平台配置根目录");
+
+    var store = new SettingsStore(Path.Combine(settingsDirectory, "settings.json"));
+    Check(store.Load().WindowSeconds == 300, "缺失设置文件时回退到默认值");
+    var custom = new PanelSettings { CodexHome = directory, WindowSeconds = 999, RefreshSeconds = 42,
+        Pinned = false, X = 12.5, Y = 34.5 };
+    store.Save(custom);
+    var loaded = store.Load();
+    Check(loaded.WindowSeconds == 300 && loaded.RefreshSeconds == 15, "越界选项在读取时归一化");
+    Check(loaded.Pinned == false && loaded.X == 12.5 && loaded.Y == 34.5 && loaded.CodexHome == directory,
+        "有效设置项完整往返");
+    Check(!File.Exists(store.Path + ".tmp"), "原子保存不残留临时文件");
+
+    var exportHours = new[] { new HourStats("09:00–10:00", 2, 21.5, 22.25), new HourStats("10:00–11:00", 0, null, null) };
+    string markdownPath = Path.Combine(directory, "report.md");
+    ReportExporter.Write(markdownPath, snap, now.Date, "model-a", exportHours);
+    string markdown = File.ReadAllText(markdownPath);
+    Check(markdown.Contains("| 09:00–10:00 | 2 | 21.50 | 22.25 |") && markdown.Contains("| 10:00–11:00 | 0 | — | — |"),
+        "Markdown 报告包含有效与空样本行");
+    string jsonPath = Path.Combine(directory, "report.json");
+    ReportExporter.Write(jsonPath, snap, now.Date, null, exportHours);
+    using var reportJson = JsonDocument.Parse(File.ReadAllText(jsonPath));
+    Check(reportJson.RootElement.GetProperty("timezone").GetString() == "UTC+8"
+        && reportJson.RootElement.GetProperty("model").GetString() == "全部模型"
+        && reportJson.RootElement.GetProperty("hours").GetArrayLength() == 2, "JSON 报告字段与导出参数一致");
+    string unsafeModel = "![remote](https://example.com/pixel.png)\n<link>[injected]";
+    ReportExporter.Write(markdownPath, snap, now.Date, unsafeModel, exportHours);
+    string escapedMarkdown = File.ReadAllText(markdownPath);
+    Check(escapedMarkdown.Contains("模型：`![remote](https://example.com/pixel.png) <link>[injected]`。")
+        && !escapedMarkdown.Contains("\n<link>"),
+        "Markdown 报告转义来自日志的模型名");
+
+    string entry = OperatingSystem.IsMacOS()
+        ? Path.Combine(directory, "LaunchAgents", "com.codextpsfloat.plist")
+        : Path.Combine(directory, "autostart", "CodexTpsFloat.desktop");
+    IAutostartService login = OperatingSystem.IsMacOS()
+        ? new MacAutostart("/Applications/Codex TPS.app", Path.GetDirectoryName(entry))
+        : new LinuxAutostart("/opt/codex tps/CodexTpsFloat", Path.GetDirectoryName(entry)!);
+    Check(!login.IsEnabled(), "未启用时登录启动为关闭状态");
+    Check(login.SetEnabled(true) == null && login.IsEnabled(), "启用登录启动会创建条目");
+    string entryText = File.ReadAllText(entry);
+    Check(OperatingSystem.IsMacOS()
+        ? entryText.Contains("<string>/Applications/Codex TPS.app</string>") && entryText.Contains("<key>RunAtLoad</key>")
+        : entryText.Contains("Exec=\"/opt/codex tps/CodexTpsFloat\"") && entryText.StartsWith("[Desktop Entry]"),
+        "登录启动条目包含可执行路径与自启标记");
+    Check(login.SetEnabled(false) == null && !login.IsEnabled() && !File.Exists(entry), "停用登录启动会移除条目");
+
+    string linuxEntryDirectory = Path.Combine(directory, "linux-escaping");
+    var escapedLogin = new LinuxAutostart("/opt/a\"b\\c%d$e`f\napp", linuxEntryDirectory);
+    Check(escapedLogin.SetEnabled(true) == null, "Linux 特殊字符路径可写入自启动条目");
+    string execLine = File.ReadAllLines(Path.Combine(linuxEntryDirectory, "CodexTpsFloat.desktop"))
+        .Single(line => line.StartsWith("Exec="));
+    // Decode desktop-entry escapes, then Exec quoting and literal percent codes.
+    string decodedExec = execLine[6..^1].Replace("\\n", "\n").Replace("\\\\", "\\");
+    var decodedPath = new StringBuilder();
+    for (int i = 0; i < decodedExec.Length; i++)
+    {
+        if (decodedExec[i] == '\\') i++;
+        else if (decodedExec[i] == '%' && decodedExec[i + 1] == '%') i++;
+        decodedPath.Append(decodedExec[i]);
+    }
+    Check(decodedPath.ToString() == "/opt/a\"b\\c%d$e`f\napp", "Exec 两层转义后保留原始路径且不插入新条目");
+    Check(new LinuxAutostart("/opt/a=b/app", linuxEntryDirectory).SetEnabled(true) == null,
+        "允许 Linux 可执行路径包含等号");
+    Check(File.ReadAllLines(Path.Combine(linuxEntryDirectory, "CodexTpsFloat.desktop"))
+        .Contains("Exec=\"/opt/a=b/app\""), "Desktop Entry 保留可执行路径中的等号");
+
+    string instanceName = "codex-tps-test-" + Guid.NewGuid().ToString("N") + new string('x', 80);
+    string instanceDirectory = Path.Combine(directory, "instance");
+    string readyPath = Path.Combine(directory, "instance-ready");
+    string wakePath = Path.Combine(directory, "instance-wake");
+    string observedPath = Path.Combine(directory, "instance-observed");
+    using var child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+    {
+        FileName = Environment.ProcessPath!,
+        UseShellExecute = false,
+        ArgumentList =
+        {
+            "--single-instance-child", instanceName, instanceDirectory,
+            readyPath, wakePath, observedPath
+        }
+    }) ?? throw new Exception("无法启动单实例测试子进程");
+    try
+    {
+        for (int attempt = 0; attempt < 100 && !File.Exists(readyPath); attempt++)
+            Thread.Sleep(50);
+        Check(File.Exists(readyPath) && !child.HasExited, "子进程获得首个单实例所有权");
+        using var secondInstance = SingleInstance.Create(instanceName, stateDirectory: instanceDirectory);
+        Check(!secondInstance.IsFirstInstance, "第二个进程不会重复启动界面");
+        var handoff = System.Diagnostics.Stopwatch.StartNew();
+        secondInstance.SignalExistingInstance();
+        Check(handoff.ElapsedMilliseconds >= 350, "唤醒确认等待界面回调完成");
+        for (int attempt = 0; attempt < 100 && !File.Exists(observedPath); attempt++)
+            Thread.Sleep(50);
+        Check(File.Exists(observedPath), "第二个进程会唤醒已有实例");
+        Check(child.WaitForExit(5000), "已有实例收到唤醒后正常退出");
+        Check(child.ExitCode == 0, "已有实例退出码正确");
+        bool timedOut = false;
+        try { secondInstance.SignalExistingInstance(TimeSpan.FromMilliseconds(300)); }
+        catch (TimeoutException) { timedOut = true; }
+        Check(timedOut, "实例退出后不再错误报告唤醒成功");
+        Check(!Directory.Exists(instanceDirectory) || !Directory.EnumerateFiles(instanceDirectory, "*.request*").Any(),
+            "唤醒超时清理请求与确认文件");
+        if (!OperatingSystem.IsWindows())
+        {
+            string movedDirectory = instanceDirectory + "-moved";
+            Directory.Move(instanceDirectory, movedDirectory);
+            try
+            {
+                bool writeFailed = false;
+                try { secondInstance.SignalExistingInstance(); }
+                catch (IOException) { writeFailed = true; }
+                Check(writeFailed, "Unix 唤醒写入失败会报告错误");
+            }
+            finally { Directory.Move(movedDirectory, instanceDirectory); }
+
+            string lockPath = Directory.GetFiles(instanceDirectory, "*.lock").Single();
+            File.Delete(lockPath);
+            File.CreateSymbolicLink(lockPath, Path.Combine(instanceDirectory, "missing-parent", "lock"));
+            bool lockFailed = false;
+            try { using var broken = SingleInstance.Create(instanceName, stateDirectory: instanceDirectory); }
+            catch (IOException) { lockFailed = true; }
+            Check(lockFailed, "Unix 非竞争锁错误不会伪装成已有实例");
+            File.Delete(lockPath);
+        }
+    }
+    finally
+    {
+        if (!child.HasExited)
+        {
+            child.Kill(true);
+            child.WaitForExit();
+        }
+    }
 }
 finally { Directory.Delete(directory, true); }
-Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行与旧格式告警。");
+Console.WriteLine("通过：统计口径、去重、重试区间、时区、增量刷新、归档、截断、等长重写、坏记录、BOM、跨缓冲区长行、CRLF、中文字符中间补全尾行、旧格式告警、设置往返、报告导出、登录启动与单实例唤醒。");
+return 0;
