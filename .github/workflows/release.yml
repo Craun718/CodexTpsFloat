@@ -178,6 +178,11 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
+      - name: Check out annotated tag for release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
       - name: Download release artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
