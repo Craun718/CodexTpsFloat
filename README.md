@@ -68,6 +68,7 @@ GitHub 源码仓库不包含可执行文件和本机运行数据。从源码构�
 
 ```powershell
 dotnet run --project .\tests\CoreTests.csproj -c Release
+dotnet run --project .\tests\AppTests.csproj -c Release
 dotnet run --project .\tests\TrayLifecycleTests.csproj -c Release -- --never-show
 .\build.ps1 -Runtime win-x64 -Portable
 ```
@@ -76,6 +77,7 @@ macOS 和 Linux 使用 Bash，架构会从当前系统推断，也可以显式�
 
 ```bash
 dotnet run --project tests/CoreTests.csproj -c Release
+dotnet run --project tests/AppTests.csproj -c Release
 ./build.sh osx-arm64
 PORTABLE=1 ./build.sh linux-x64
 ```
@@ -88,8 +90,8 @@ PORTABLE=1 ./build.sh linux-x64
 
 ```powershell
 git push origin main
-git tag -a v1.1.4 -m "Release v1.1.4"
-git push origin v1.1.4
+git tag -a v1.2.1 -m "Release v1.2.1"
+git push origin v1.2.1
 ```
 
-推送标签后，GitHub Actions 会校验标签与项目版本一致，运行核心测试；Windows 额外运行旧版 WPF 隐藏托盘生命周期回归测试；该测试不覆盖 Avalonia 发布入口的托盘行为，后者仍需在各桌面环境进行手动验收。发布矩阵构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 便携包，解压后执行快照 smoke test，并生成 SHA-256 校验文件。全部平台成功后，工作流创建公开 Release 并上传所有压缩包与校验文件。打包只包含程序、README、隐私说明和第三方许可证，不包含本机设置、日志或调试符号。
+推送标签后，GitHub Actions 会校验标签与项目版本一致，运行核心测试和 Avalonia 无界面回归测试；Windows 额外运行旧版 WPF 隐藏托盘生命周期回归测试。这些测试不覆盖各平台原生托盘行为，后者仍需在各桌面环境进行手动验收。发布矩阵构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 便携包，解压后执行快照 smoke test，并生成 SHA-256 校验文件。全部平台成功后，工作流创建公开 Release 并上传所有压缩包与校验文件。打包只包含程序、README、隐私说明和第三方许可证，不包含本机设置、日志或调试符号。
