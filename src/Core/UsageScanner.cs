@@ -40,6 +40,8 @@ public sealed class UsageScanner
         public long Offset;
         public long Creation;
         public long LastLength;
+        public byte[]? Prefix;
+        public int PrefixLength;
         public byte[]? Tail;
         public int TailLength;
         public string Thread = "";
@@ -50,8 +52,15 @@ public sealed class UsageScanner
         // Keep a sliding window of the most recently consumed bytes so a replaced or
         // rewritten file can be detected without relying on birth time, which Unix
         // filesystems often do not expose (and ctime changes on every append there).
-        public void AppendTail(ReadOnlySpan<byte> data)
+        public void RememberBytes(ReadOnlySpan<byte> data)
         {
+            if (PrefixLength < TailCapacity)
+            {
+                Prefix ??= new byte[TailCapacity];
+                int take = Math.Min(data.Length, TailCapacity - PrefixLength);
+                data[..take].CopyTo(Prefix.AsSpan(PrefixLength));
+                PrefixLength += take;
+            }
             Tail ??= new byte[TailCapacity];
             if (data.Length >= TailCapacity)
             {
@@ -182,7 +191,7 @@ public sealed class UsageScanner
                         catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException)
                         { invalidLines++; }
                     }
-                    cursor.AppendTail(buffer.AsSpan(consumed, newline + 1));
+                    cursor.RememberBytes(buffer.AsSpan(consumed, newline + 1));
                     consumed += newline + 1;
                     cursor.Offset += newline + 1; // Byte offsets also cover CRLF and multibyte UTF-8.
                 }
@@ -200,15 +209,10 @@ public sealed class UsageScanner
         }
         finally { ArrayPool<byte>.Shared.Return(buffer, clearArray: true); }
     }
-    // Confirms the bytes immediately before the remembered offset are still the ones we
-    // consumed, so a rewritten or replaced file does not get treated as a plain append.
-    static bool TailMatches(FileStream stream, Cursor cursor)
+    static bool BytesMatch(FileStream stream, long offset, ReadOnlySpan<byte> expected)
     {
-        long start = cursor.Offset - cursor.TailLength;
-        if (cursor.Tail == null || start < 0 || stream.Length < cursor.Offset) return false;
-        stream.Seek(start, SeekOrigin.Begin);
+        stream.Seek(offset, SeekOrigin.Begin);
         Span<byte> probe = stackalloc byte[Cursor.TailCapacity];
-        var expected = cursor.Tail.AsSpan(0, cursor.TailLength);
         int read = 0;
         while (read < expected.Length)
         {
@@ -218,6 +222,12 @@ public sealed class UsageScanner
         }
         return probe[..expected.Length].SequenceEqual(expected);
     }
+    // A replacement can retain its suffix and filesystem timestamp. Check the first
+    // consumed bytes too, without rereading the entire log on every refresh.
+    static bool ContentMatches(FileStream stream, Cursor cursor) =>
+        cursor.Prefix != null && cursor.Tail != null && stream.Length >= cursor.Offset
+        && BytesMatch(stream, 0, cursor.Prefix.AsSpan(0, cursor.PrefixLength))
+        && BytesMatch(stream, cursor.Offset - cursor.TailLength, cursor.Tail.AsSpan(0, cursor.TailLength));
     public UsageSnapshot Refresh(DateTimeOffset now)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -244,7 +254,7 @@ public sealed class UsageScanner
                     {
                         cursor.Offset = 3;
                         ReadOnlySpan<byte> bom = [0xEF, 0xBB, 0xBF];
-                        cursor.AppendTail(bom);
+                        cursor.RememberBytes(bom);
                     }
                 }
                 // Only a cursor that already consumed bytes can be invalidated; an empty
@@ -253,7 +263,7 @@ public sealed class UsageScanner
                 // there only invalidates a same-size file, not an ordinary append.
                 bool replaced = cursor.Creation != 0 && cursor.Creation != creation
                     && (OperatingSystem.IsWindows() || length == cursor.LastLength);
-                if (cursor.Offset > 0 && (length < cursor.Offset || replaced || !TailMatches(stream, cursor)))
+                if (cursor.Offset > 0 && (length < cursor.Offset || replaced || !ContentMatches(stream, cursor)))
                 {
                     // Rebuild after replacement/truncation; stale usage must not survive a reset.
                     cursors.Clear(); usage.Clear(); turns.Clear(); invalidLines = 0;

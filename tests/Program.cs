@@ -123,6 +123,18 @@ try
     Check(replaced.Refresh(now).Records.Single().Usage.Id == "rewrite",
         "等长替换保留相同尾部时仍重建旧用量");
 
+    // Coarse timestamps can collide on a quick replacement; verify the content fallback.
+    File.WriteAllText(replacedFile, row + "\n" + sameSuffix, new UTF8Encoding(false));
+    replaced = new UsageScanner(replacedRoot);
+    Check(replaced.Refresh(now).Records.Single().Usage.Id == "partial", "时间戳碰撞前读取原始用量");
+    File.WriteAllText(replacementFile, other + "\n" + sameSuffix, new UTF8Encoding(false));
+    File.SetLastWriteTimeUtc(replacementFile, File.GetLastWriteTimeUtc(replacedFile));
+    if (OperatingSystem.IsWindows())
+        File.SetCreationTimeUtc(replacementFile, File.GetCreationTimeUtc(replacedFile));
+    File.Move(replacementFile, replacedFile, true);
+    Check(replaced.Refresh(now).Records.Single().Usage.Id == "rewrite",
+        "时间戳相同且尾部相同时仍检查文件头");
+
     string streamRoot = Path.Combine(directory, "streaming");
     Directory.CreateDirectory(Path.Combine(streamRoot, "sessions"));
     string streamFile = Path.Combine(streamRoot, "sessions", "unicode.jsonl");
