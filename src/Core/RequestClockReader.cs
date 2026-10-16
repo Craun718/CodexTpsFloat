@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using Microsoft.Data.Sqlite;
 
 namespace CodexTpsFloat;
@@ -18,8 +19,9 @@ public sealed class RequestClockReader
     static readonly Regex TurnId = new("turn\\.id=\"?([\\w-]+)", RegexOptions.Compiled);
     public string? Warning { get; private set; }
     public RequestClockReader(string home) => this.home = home;
-    public IReadOnlyDictionary<string, double[]> Refresh()
+    public IReadOnlyDictionary<string, double[]> Refresh(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Warning = null;
         try
         {
@@ -29,6 +31,11 @@ public sealed class RequestClockReader
             using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             { DataSource = database, Mode = SqliteOpenMode.ReadOnly, Pooling = false, DefaultTimeout = 1 }.ToString());
             connection.Open();
+            cancellationToken.ThrowIfCancellationRequested();
+            // SqliteCommand.Cancel is a no-op. Check cancellation inside SQLite's
+            // VM too, including queries which have not produced their first row.
+            SQLitePCL.raw.sqlite3_progress_handler(connection.Handle, 1000,
+                static state => ((CancellationToken)state).IsCancellationRequested ? 1 : 0, cancellationToken);
             using (var maximum = connection.CreateCommand())
             {
                 maximum.CommandText = "SELECT COALESCE(MAX(id),0) FROM logs";
@@ -42,6 +49,7 @@ public sealed class RequestClockReader
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 lastId = Math.Max(lastId, reader.GetInt64(0));
                 if (reader.IsDBNull(3) || reader.IsDBNull(4)) continue;
                 string body = reader.GetString(4);
@@ -54,8 +62,11 @@ public sealed class RequestClockReader
                 times.Add(reader.GetInt64(1) + reader.GetInt64(2) / 1e9);
             }
         }
+        catch (SqliteException) when (cancellationToken.IsCancellationRequested)
+        { throw new OperationCanceledException(cancellationToken); }
         catch (Exception e) when (e is SqliteException or IOException or UnauthorizedAccessException)
         { Warning = "请求诊断库不可用，仅使用输出项计时"; }
+        cancellationToken.ThrowIfCancellationRequested();
         return Freeze();
     }
     IReadOnlyDictionary<string, double[]> Freeze() => clocks.ToDictionary(p => p.Key, p => p.Value.Order().ToArray());
