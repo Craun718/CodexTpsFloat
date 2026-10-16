@@ -163,7 +163,7 @@ jobs:
           "$smoke_directory/CodexTpsFloat" --codex-home "$fixture_directory" --snapshot-json "$snapshot_path"
           python3 - "$snapshot_path" <<'PY'
           import json, sys
-          snapshot = json.load(open(sys.argv[1]))
+          snapshot = json.load(open(sys.argv[1], encoding="utf-8-sig"))
           if (snapshot["Files"], snapshot["InvalidLines"], snapshot["UnsupportedFiles"], snapshot["ReadFailures"]) != (1, 0, 0, 0):
               raise SystemExit("Portable snapshot incorrectly reports an aborted session as unsupported.")
           PY
